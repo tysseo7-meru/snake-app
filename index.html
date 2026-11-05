@@ -566,7 +566,9 @@ function loadHighScores() {
 function recordHighScore() {
   const sc = Math.floor(player.score);
   if (sc > 0) {
-    const list = loadHighScores();
+    let list = loadHighScores();
+    const myBest = list.reduce((m, e) => e.name === player.name ? Math.max(m, e.score) : m, 0);
+    if (sc > myBest) list = list.filter(e => e.name !== player.name); // new personal record: clear my past scores
     lastEntry = { name: player.name, score: sc, date: Date.now() };
     list.push(lastEntry);
     list.sort((a, b) => b.score - a.score || a.date - b.date);
@@ -597,8 +599,8 @@ function startGame() {
 function gameOver() {
   running = false;
   document.getElementById('overStats').textContent = T('finalLen') + Math.floor(player.score);
-  recordHighScore();
-  setTimeout(() => overScr.classList.remove('hidden'), 650);
+  setTimeout(() => overScr.classList.remove('hidden'), 650); // show the screen first: scoring must never block it
+  try { recordHighScore(); } catch (e) {}
 }
 document.getElementById('playBtn').addEventListener('click', startGame);
 document.getElementById('againBtn').addEventListener('click', startGame);
@@ -612,7 +614,7 @@ document.querySelectorAll('.langbtn').forEach(b => b.addEventListener('click', (
 }));
 applyLang();
 startSync();
-document.getElementById('verTag').textContent = 'Snake Park v13';
+document.getElementById('verTag').textContent = 'Snake Park v14';
 spawnWorld(T('you')); // backdrop demo behind the start screen
 </script>
 </body>
