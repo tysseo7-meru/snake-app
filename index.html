@@ -19,14 +19,9 @@
             border-radius: 10px; padding: 8px 12px; font-size: 14px; line-height: 1.5; }
   #status b { color: #ffd76a; }
   #feed { left: 10px; bottom: 12px; font-size: 13px; color: #cdd8ff; text-shadow: 0 1px 3px #000; line-height: 1.6; }
-  #stateLine { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 5;
-               font-size: 10px; color: rgba(200,210,255,.55); pointer-events: none; white-space: nowrap; }
   #errLine { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 99; display: none;
              background: rgba(160,20,30,.92); color: #fff; font-size: 12px; padding: 6px 12px;
              border-radius: 8px; max-width: 92vw; pointer-events: none; }
-  #stateTop { position: fixed; top: 118px; left: 8px; z-index: 40; pointer-events: none;
-              background: rgba(10,14,30,.78); border: 1px solid rgba(140,160,255,.35); border-radius: 8px;
-              color: #ffe27a; font-size: 13px; font-weight: 700; padding: 4px 10px; white-space: nowrap; }
   #verTag { position: fixed; bottom: 8px; left: 50%; transform: translateX(-50%); z-index: 5;
             font-size: 11px; color: rgba(160,175,220,0.55); pointer-events: none; }
 
@@ -65,9 +60,7 @@
 <div id="board" class="hud"><h4 id="boardTitle">ランキング</h4><div id="boardRows"></div></div>
 <div id="feed" class="hud"></div>
 <div id="verTag"></div>
-<div id="stateLine"></div>
 <div id="errLine"></div>
-<div id="stateTop"></div>
 <button id="boostBtn">ブースト</button>
 <button id="bgmBtn" class="bgmbtn">BGM：オン</button>
 
@@ -125,7 +118,8 @@ const STR = {
         finalLen: 'Final length: ', you: 'You', youDown: 'You went down…', down: ' went down', by: ' (by ', byEnd: ')',
         bgmOn: 'BGM: On', bgmOff: 'BGM: Off', online: 'Online', hs: 'High Scores' }
 };
-function T(k) { return STR[LANG][k]; }
+if (!STR[LANG]) { LANG = 'ja'; try { localStorage.setItem('snakeLang', LANG); } catch (e) {} } // heal a bad stored language value
+function T(k) { const d = STR[LANG] || STR.ja; const v = d[k]; return v !== undefined ? v : k; }
 function botNames() { return BOT_NAMES; }
 function applyLang() {
   document.documentElement.lang = LANG;
@@ -625,13 +619,14 @@ document.getElementById('nameIn').addEventListener('keydown', e => { if (e.key =
 try { const n = localStorage.getItem('snakeName'); if (n) document.getElementById('nameIn').value = n; } catch (e) {}
 document.querySelectorAll('.bgmbtn').forEach(b => b.addEventListener('click', toggleBgm));
 document.querySelectorAll('.langbtn').forEach(b => b.addEventListener('click', () => {
+  if (!STR[b.dataset.lang]) return;
   LANG = b.dataset.lang;
   try { localStorage.setItem('snakeLang', LANG); } catch (e) {}
   applyLang();
 }));
 applyLang();
 startSync();
-document.getElementById('verTag').textContent = 'Snake Park v16';
+document.getElementById('verTag').textContent = 'Snake Park v17';
 
 // ---------------- diagnostics + game-over watchdog ----------------
 function showErr(msg) {
@@ -645,13 +640,8 @@ function forceOverlay() {
 }
 window.addEventListener('error', e => showErr(e.message || 'unknown'));
 window.addEventListener('unhandledrejection', e => showErr((e.reason && e.reason.message) || 'promise'));
-let deadAt = 0, lastFrameNo = 0;
+let deadAt = 0;
 setInterval(() => {
-  const dispFps = (frameNo - lastFrameNo) * 2; lastFrameNo = frameNo;
-  const txt = 'v16 alive:' + (player ? (player.alive ? 1 : 0) : '-') + ' run:' + (running ? 1 : 0)
-    + ' fps:' + dispFps + ' ov:' + (overScr.classList.contains('hidden') ? 'hid' : 'vis');
-  const sl = document.getElementById('stateLine'); if (sl) sl.textContent = txt;
-  const st = document.getElementById('stateTop'); if (st) st.textContent = txt;
   if (player && !player.alive) {
     if (!deadAt) deadAt = Date.now();
     if (Date.now() - deadAt > 1500 && overScr.classList.contains('hidden')) forceOverlay(); // watchdog: the game-over screen must appear
