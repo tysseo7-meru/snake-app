@@ -90,8 +90,7 @@ function resize() {
 window.addEventListener('resize', resize); resize();
 
 const COLORS = ['#ff5d5d','#ffb84d','#f7e94d','#7dff5e','#4dffc3','#4dc9ff','#7d7dff','#c44dff','#ff4da6','#4dff88','#ffd24d','#6af2ff'];
-const BOT_NAMES_JA = ['ポチ','ハナ','ソラ','ムギ','ココ','リン','タロ','ユキ','マメ','フク','サク'];
-const BOT_NAMES_EN = ['Pochi','Hana','Sora','Mugi','Coco','Rin','Taro','Yuki','Mame','Fuku','Saku'];
+const BOT_NAMES = ['Pochi','Hana','Sora','Mugi','Coco','Rin','Taro','Yuki','Mame','Fuku','Saku'];
 let LANG = 'ja';
 try { LANG = localStorage.getItem('snakeLang') || 'ja'; } catch (e) {}
 const STR = {
@@ -107,7 +106,7 @@ const STR = {
         bgmOn: 'BGM: On', bgmOff: 'BGM: Off' }
 };
 function T(k) { return STR[LANG][k]; }
-function botNames() { return LANG === 'en' ? BOT_NAMES_EN : BOT_NAMES_JA; }
+function botNames() { return BOT_NAMES; }
 function applyLang() {
   document.documentElement.lang = LANG;
   document.title = T('title');
