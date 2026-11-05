@@ -33,29 +33,35 @@
                    border: none; background: linear-gradient(180deg, #57b6ff, #2b6fe0); color: #fff; cursor: pointer;
                    box-shadow: 0 4px 18px rgba(60,130,255,.5); }
   #overStats { font-size: 16px; color: #ffd76a; }
+  .langrow { display: flex; gap: 8px; }
+  .langbtn { font-size: 13px !important; padding: 6px 18px !important; background: #1a2447 !important;
+             box-shadow: none !important; border: 1px solid #54679f !important; }
+  .langbtn.sel { background: #2b6fe0 !important; }
   .hidden { display: none !important; }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
 
-<div id="status" class="hud">長さ <b id="lenNow">0</b>　順位 <b id="rankNow">-</b></div>
-<div id="board" class="hud"><h4>ランキング</h4><div id="boardRows"></div></div>
+<div id="status" class="hud"><span id="lenLabel">長さ</span> <b id="lenNow">0</b>　<span id="rankLabel">順位</span> <b id="rankNow">-</b></div>
+<div id="board" class="hud"><h4 id="boardTitle">ランキング</h4><div id="boardRows"></div></div>
 <div id="feed" class="hud"></div>
 <button id="boostBtn">ブースト</button>
 
 <div id="startScr" class="screen">
-  <h1>スネークパーク</h1>
-  <p>光る粒を食べて長くなろう。他の蛇の体に頭が当たると負け。逆に、自分の体に当てさせれば相手が粒になって食べられる。押している間はブースト（速くなる代わりに少しずつ短くなる）。</p>
+  <h1 id="titleTxt">スネークパーク</h1>
+  <p id="descTxt">光る粒を食べて長くなろう。他の蛇の体に頭が当たると負け。逆に、自分の体に当てさせれば相手が粒になって食べられる。押している間はブースト（速くなる代わりに少しずつ短くなる）。</p>
+  <div class="langrow"><button class="langbtn" data-lang="ja">日本語</button><button class="langbtn" data-lang="en">English</button></div>
   <input id="nameIn" maxlength="12" placeholder="名前（例：アキラ）">
   <button id="playBtn">あそぶ</button>
-  <p style="font-size:12px;color:#7e8cbd">PC：マウスで向き、押している間ブースト／ スマホ：指で向き、下のボタンでブースト</p>
+  <p id="howTxt" style="font-size:12px;color:#7e8cbd">PC：マウスで向き、押している間ブースト／ スマホ：指で向き、下のボタンでブースト</p>
 </div>
 
 <div id="overScr" class="screen hidden">
-  <h1>ゲームオーバー</h1>
+  <h1 id="overTxt">ゲームオーバー</h1>
   <div id="overStats"></div>
   <button id="againBtn">もう一度</button>
+  <div class="langrow"><button class="langbtn" data-lang="ja">日本語</button><button class="langbtn" data-lang="en">English</button></div>
 </div>
 
 <script>
@@ -79,7 +85,32 @@ function resize() {
 window.addEventListener('resize', resize); resize();
 
 const COLORS = ['#ff5d5d','#ffb84d','#f7e94d','#7dff5e','#4dffc3','#4dc9ff','#7d7dff','#c44dff','#ff4da6','#4dff88','#ffd24d','#6af2ff'];
-const BOT_NAMES = ['ポチ','ハナ','ソラ','ムギ','ココ','リン','タロ','ユキ','マメ','フク','サク'];
+const BOT_NAMES_JA = ['ポチ','ハナ','ソラ','ムギ','ココ','リン','タロ','ユキ','マメ','フク','サク'];
+const BOT_NAMES_EN = ['Pochi','Hana','Sora','Mugi','Coco','Rin','Taro','Yuki','Mame','Fuku','Saku'];
+let LANG = 'ja';
+try { LANG = localStorage.getItem('snakeLang') || 'ja'; } catch (e) {}
+const STR = {
+  ja: { title: 'スネークパーク', desc: '光る粒を食べて長くなろう。他の蛇の体に頭が当たると負け。逆に、自分の体に当てさせれば相手が粒になって食べられる。押している間はブースト（速くなる代わりに少しずつ短くなる）。',
+        ph: '名前（例：アキラ）', play: 'あそぶ', how: 'PC：マウスで向き、押している間ブースト／ スマホ：指で向き、下のボタンでブースト',
+        len: '長さ', rank: '順位', board: 'ランキング', boost: 'ブースト', over: 'ゲームオーバー', again: 'もう一度',
+        finalLen: '最終の長さ： ', you: 'あなた', youDown: 'あなたは倒れた…', down: ' が倒れた', by: '（', byEnd: '）' },
+  en: { title: 'Snake Park', desc: 'Eat the glowing orbs to grow longer. If your head touches another snake\'s body, you lose. Make others crash into you and eat the orbs they drop. Hold to boost (faster, but you slowly shrink).',
+        ph: 'Name (e.g. Alex)', play: 'Play', how: 'PC: steer with the mouse, hold to boost / Phone: steer with your finger, use the button to boost',
+        len: 'Length', rank: 'Rank', board: 'Ranking', boost: 'BOOST', over: 'Game Over', again: 'Play again',
+        finalLen: 'Final length: ', you: 'You', youDown: 'You went down…', down: ' went down', by: ' (by ', byEnd: ')' }
+};
+function T(k) { return STR[LANG][k]; }
+function botNames() { return LANG === 'en' ? BOT_NAMES_EN : BOT_NAMES_JA; }
+function applyLang() {
+  document.documentElement.lang = LANG;
+  document.title = T('title');
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('titleTxt', T('title')); set('descTxt', T('desc')); set('playBtn', T('play')); set('howTxt', T('how'));
+  set('lenLabel', T('len')); set('rankLabel', T('rank')); set('boardTitle', T('board'));
+  set('boostBtn', T('boost')); set('overTxt', T('over')); set('againBtn', T('again'));
+  const ni = document.getElementById('nameIn'); if (ni) ni.placeholder = T('ph');
+  document.querySelectorAll('.langbtn').forEach(b => b.classList.toggle('sel', b.dataset.lang === LANG));
+}
 const rand = (a, b) => a + Math.random() * (b - a);
 function randInArena(margin) {
   const r = Math.sqrt(Math.random()) * (ARENA_R - (margin || 60)), a = rand(0, Math.PI * 2);
@@ -116,7 +147,7 @@ function spawnWorld(playerName) {
   snakes.push(player);
   for (let i = 0; i < BOT_COUNT; i++) {
     const p = randInArena(300);
-    snakes.push(makeSnake(BOT_NAMES[i % BOT_NAMES.length], COLORS[i % COLORS.length], false, p.x, p.y));
+    snakes.push(makeSnake(botNames()[i % botNames().length], COLORS[i % COLORS.length], false, p.x, p.y));
   }
 }
 
@@ -178,13 +209,15 @@ function stepSnake(s, dt) {
       orbs.push(makeOrb(tail.x + rand(-4, 4), tail.y + rand(-4, 4), 1));
     }
   }
-  const head = s.pts[0];
-  if (Math.hypot(s.x - head.x, s.y - head.y) >= SEG) {
-    s.pts.unshift({ x: s.x, y: s.y });
-    let acc = 0, cut = s.pts.length;
-    for (let i = 1; i < s.pts.length; i++) { acc += Math.hypot(s.pts[i].x - s.pts[i - 1].x, s.pts[i].y - s.pts[i - 1].y); if (acc >= trailLen(s)) { cut = i + 1; break; } }
-    s.pts.length = Math.min(cut, s.pts.length);
-  } else { s.pts[0] = { x: s.x, y: s.y }; }
+  const pts = s.pts;
+  if (!pts.length || Math.hypot(s.x - pts[0].x, s.y - pts[0].y) >= 2) {
+    pts.unshift({ x: s.x, y: s.y });
+  } else { pts[0].x = s.x; pts[0].y = s.y; }
+  let acc = 0;
+  for (let i = 1; i < pts.length; i++) {
+    acc += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    if (acc >= trailLen(s)) { pts.length = i + 1; break; }
+  }
 }
 function eatOrbs(s) {
   const r = radiusOf(s) + 5;
@@ -197,7 +230,7 @@ function killSnake(s, byName) {
   s.alive = false;
   const n = Math.min(s.pts.length, 26 + (s.score | 0));
   for (let i = 0; i < n; i += 2) { const p = s.pts[i]; if (p) orbs.push(makeOrb(p.x + rand(-6, 6), p.y + rand(-6, 6), 2, true)); }
-  feed(s.isPlayer ? 'あなたは倒れた…' : s.name + ' が倒れた' + (byName ? '（' + byName + '）' : ''));
+  feed(s.isPlayer ? T('youDown') : s.name + T('down') + (byName ? T('by') + byName + T('byEnd') : ''));
   if (s.isPlayer) { gameOver(); }
   else setTimeout(() => { if (running) { const p = randInArena(300); const ns = makeSnake(s.name, s.color, false, p.x, p.y); snakes[snakes.indexOf(s)] = ns; } }, 2600);
 }
@@ -240,8 +273,11 @@ function drawSnake(s, camX, camY, zoom) {
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
-  // eyes
+  // head disc (guarantees the face sits on the body)
   const hx = (s.x - camX) * zoom + W / 2, hy = (s.y - camY) * zoom + H / 2;
+  ctx.beginPath(); ctx.arc(hx, hy, r * zoom, 0, 6.29);
+  ctx.fillStyle = s.color; ctx.globalAlpha = s.alive ? 0.95 : 0.25; ctx.fill(); ctx.globalAlpha = 1;
+  // eyes
   const ex = Math.cos(s.ang), ey = Math.sin(s.ang), px = -ey, py = ex;
   for (const sgn of [-1, 1]) {
     const cx = hx + (ex * r * 0.45 + px * sgn * r * 0.42) * zoom, cy = hy + (ey * r * 0.45 + py * sgn * r * 0.42) * zoom;
@@ -321,7 +357,7 @@ requestAnimationFrame(loop);
 // ---------------- screens ----------------
 const startScr = document.getElementById('startScr'), overScr = document.getElementById('overScr');
 function startGame() {
-  const name = document.getElementById('nameIn').value.trim() || 'あなた';
+  const name = document.getElementById('nameIn').value.trim() || T('you');
   try { localStorage.setItem('snakeName', name); } catch (e) {}
   spawnWorld(name);
   running = true;
@@ -329,14 +365,20 @@ function startGame() {
 }
 function gameOver() {
   running = false;
-  document.getElementById('overStats').textContent = '最終の長さ： ' + Math.floor(player.score);
+  document.getElementById('overStats').textContent = T('finalLen') + Math.floor(player.score);
   setTimeout(() => overScr.classList.remove('hidden'), 650);
 }
 document.getElementById('playBtn').addEventListener('click', startGame);
 document.getElementById('againBtn').addEventListener('click', startGame);
 document.getElementById('nameIn').addEventListener('keydown', e => { if (e.key === 'Enter') startGame(); });
 try { const n = localStorage.getItem('snakeName'); if (n) document.getElementById('nameIn').value = n; } catch (e) {}
-spawnWorld('あなた'); // backdrop demo behind the start screen
+document.querySelectorAll('.langbtn').forEach(b => b.addEventListener('click', () => {
+  LANG = b.dataset.lang;
+  try { localStorage.setItem('snakeLang', LANG); } catch (e) {}
+  applyLang();
+}));
+applyLang();
+spawnWorld(T('you')); // backdrop demo behind the start screen
 </script>
 </body>
 </html>
