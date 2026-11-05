@@ -572,7 +572,12 @@ function checkRemoteDeaths() {
 // ---------------- high scores (this device, every run, top 10 overall) ----------------
 let lastEntry = null;
 function loadHighScores() {
-  try { return JSON.parse(localStorage.getItem('snakeHighScores') || '[]'); } catch (e) { return []; }
+  try {
+    const list = JSON.parse(localStorage.getItem('snakeHighScores') || '[]');
+    if (!Array.isArray(list)) return [];
+    return list.filter(e => e && typeof e.name === 'string' && typeof e.score === 'number')
+               .map(e => ({ name: e.name, score: e.score, date: typeof e.date === 'number' ? e.date : 0 }));
+  } catch (e) { return []; }
 }
 function recordHighScore() {
   const sc = Math.floor(player.score);
@@ -626,7 +631,7 @@ document.querySelectorAll('.langbtn').forEach(b => b.addEventListener('click', (
 }));
 applyLang();
 startSync();
-document.getElementById('verTag').textContent = 'Snake Park v17';
+document.getElementById('verTag').textContent = 'Snake Park v18';
 
 // ---------------- diagnostics + game-over watchdog ----------------
 function showErr(msg) {
@@ -636,6 +641,7 @@ function showErr(msg) {
 }
 function forceOverlay() {
   try { document.getElementById('overStats').textContent = T('finalLen') + Math.floor(player.score); } catch (e) {}
+  try { renderHighScores(); } catch (e) {}
   overScr.classList.remove('hidden');
 }
 window.addEventListener('error', e => showErr(e.message || 'unknown'));
