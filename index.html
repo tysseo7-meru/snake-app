@@ -79,7 +79,7 @@
 "use strict";
 // ---------------- world constants ----------------
 const ARENA_R = 2200;            // arena radius (world units)
-const ORB_COUNT = 900;
+const ORB_COUNT = 650;
 const BOT_COUNT = 11;
 const BASE_SPEED = 2.35, BOOST_SPEED = 4.35;
 const TURN = 0.095;              // max turn per frame (rad)
@@ -147,7 +147,7 @@ function makeSnake(name, color, isPlayer, sx, sy) {
   const s = { name, color, isPlayer: !!isPlayer, alive: true,
               x: sx, y: sy, ang: a, targetAng: a,
               score: isPlayer ? 12 : 14 + Math.random() * 50, pts: [], boost: false, aiT: 0, aiMode: 'eat', aiTx: 0, aiTy: 0 };
-  for (let i = 0; i < 90; i++) s.pts.push({ x: sx - Math.cos(a) * i * SEG, y: sy - Math.sin(a) * i * SEG });
+  for (let i = 0; i < 12; i++) s.pts.push({ x: sx - Math.cos(a) * i * SEG, y: sy - Math.sin(a) * i * SEG });
   return s;
 }
 function radiusOf(s) { return 5.5 + Math.sqrt(Math.max(0, s.score)) * 0.75; }
@@ -223,14 +223,19 @@ function stepSnake(s, dt) {
     }
   }
   const pts = s.pts;
-  if (!pts.length || Math.hypot(s.x - pts[0].x, s.y - pts[0].y) >= 2) {
-    pts.unshift({ x: s.x, y: s.y });
-  } else { pts[0].x = s.x; pts[0].y = s.y; }
+  // Record a point every ~2 units of head travel. pts[0] must stay FIXED once
+  // recorded (never dragged along with the head), or the gap never accumulates
+  // on high-refresh / irregular frame timing and the trail silently freezes.
+  if (!pts.length) pts.push({ x: s.x, y: s.y });
+  else if (Math.hypot(s.x - pts[0].x, s.y - pts[0].y) >= 2) pts.unshift({ x: s.x, y: s.y });
   let acc = 0;
   for (let i = 1; i < pts.length; i++) {
-    acc += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    const seg = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    if (seg > 60) { pts.length = i; break; } // a jump that long is never a real trail segment: cut it
+    acc += seg;
     if (acc >= trailLen(s)) { pts.length = i + 1; break; }
   }
+  if (pts.length > 700) pts.length = 700;
 }
 function eatOrbs(s) {
   const r = radiusOf(s) + 5;
@@ -456,7 +461,7 @@ document.querySelectorAll('.langbtn').forEach(b => b.addEventListener('click', (
   applyLang();
 }));
 applyLang();
-document.getElementById('verTag').textContent = 'Snake Park v7';
+document.getElementById('verTag').textContent = 'Snake Park v8';
 spawnWorld(T('you')); // backdrop demo behind the start screen
 </script>
 </body>
