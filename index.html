@@ -36,6 +36,10 @@
                    border: none; background: linear-gradient(180deg, #57b6ff, #2b6fe0); color: #fff; cursor: pointer;
                    box-shadow: 0 4px 18px rgba(60,130,255,.5); }
   #overStats { font-size: 16px; color: #ffd76a; }
+  #hsBox { background: rgba(10,14,30,.62); border: 1px solid rgba(140,160,255,.25); border-radius: 10px;
+           padding: 10px 18px; min-width: 250px; font-size: 14px; line-height: 1.65; text-align: left; }
+  #hsBox h3 { font-size: 12px; color: #9fb4ff; letter-spacing: .08em; margin-bottom: 2px; text-align: center; }
+  #hsList .me { color: #ffd76a; font-weight: 700; }
   .langrow { display: flex; gap: 8px; }
   .langbtn { font-size: 13px !important; padding: 6px 18px !important; background: #1a2447 !important;
              box-shadow: none !important; border: 1px solid #54679f !important; }
@@ -69,6 +73,7 @@
 <div id="overScr" class="screen hidden">
   <h1 id="overTxt">ゲームオーバー</h1>
   <div id="overStats"></div>
+  <div id="hsBox"><h3 id="hsTitle">ハイスコア</h3><div id="hsList"></div></div>
   <button id="againBtn">もう一度</button>
   <div class="langrow"><button class="langbtn" data-lang="ja">日本語</button><button class="langbtn" data-lang="en">English</button></div>
 </div>
@@ -102,12 +107,12 @@ const STR = {
         ph: '名前（例：アキラ）', play: 'あそぶ', how: 'PC：マウスで向き、押している間ブースト／ スマホ：指で向き、下のボタンでブースト',
         len: '長さ', rank: '順位', board: 'ランキング', boost: 'ブースト', over: 'ゲームオーバー', again: 'もう一度',
         finalLen: '最終の長さ： ', you: 'あなた', youDown: 'あなたは倒れた…', down: ' が倒れた', by: '（', byEnd: '）',
-        bgmOn: 'BGM：オン', bgmOff: 'BGM：オフ', online: 'オンライン' },
+        bgmOn: 'BGM：オン', bgmOff: 'BGM：オフ', online: 'オンライン', hs: 'ハイスコア' },
   en: { title: 'Snake Park', desc: 'Eat the glowing orbs to grow longer. If your head touches another snake\'s body, you lose. Make others crash into you and eat the orbs they drop. Hold to boost (faster, but you slowly shrink).',
         ph: 'Name (e.g. Alex)', play: 'Play', how: 'PC: steer with the mouse, hold to boost / Phone: steer with your finger, use the button to boost',
         len: 'Length', rank: 'Rank', board: 'Ranking', boost: 'BOOST', over: 'Game Over', again: 'Play again',
         finalLen: 'Final length: ', you: 'You', youDown: 'You went down…', down: ' went down', by: ' (by ', byEnd: ')',
-        bgmOn: 'BGM: On', bgmOff: 'BGM: Off', online: 'Online' }
+        bgmOn: 'BGM: On', bgmOff: 'BGM: Off', online: 'Online', hs: 'High Scores' }
 };
 function T(k) { return STR[LANG][k]; }
 function botNames() { return BOT_NAMES; }
@@ -117,7 +122,7 @@ function applyLang() {
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   set('titleTxt', T('title')); set('descTxt', T('desc')); set('playBtn', T('play')); set('howTxt', T('how'));
   set('lenLabel', T('len')); set('rankLabel', T('rank')); set('boardTitle', T('board'));
-  set('boostBtn', T('boost')); set('overTxt', T('over')); set('againBtn', T('again'));
+  set('boostBtn', T('boost')); set('overTxt', T('over')); set('againBtn', T('again')); set('hsTitle', T('hs'));
   const ni = document.getElementById('nameIn'); if (ni) ni.placeholder = T('ph');
   document.querySelectorAll('.langbtn').forEach(b => b.classList.toggle('sel', b.dataset.lang === LANG));
   refreshBgmBtns();
@@ -271,8 +276,9 @@ function checkDeaths() {
     }
   }
 }
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function feed(msg) {
-  feedMsgs.push(msg); if (feedMsgs.length > 4) feedMsgs.shift();
+  feedMsgs.push(esc(msg)); if (feedMsgs.length > 4) feedMsgs.shift();
   document.getElementById('feed').innerHTML = feedMsgs.join('<br>');
   setTimeout(() => { feedMsgs.shift(); document.getElementById('feed').innerHTML = feedMsgs.join('<br>'); }, 4200);
 }
@@ -351,7 +357,7 @@ function hud(now) {
   lenEl.textContent = Math.floor(player.score);
   rankEl.textContent = player.alive ? (entries.findIndex(e => e.ref === player) + 1) + ' / ' + entries.length : '-';
   boardEl.innerHTML = entries.slice(0, 5).map((s, i) =>
-    `<div class="${s.me ? 'me' : ''}">${i + 1}. ${s.name}　${Math.floor(s.score)}</div>`).join('');
+    `<div class="${s.me ? 'me' : ''}">${i + 1}. ${esc(s.name)}　${Math.floor(s.score)}</div>`).join('');
   const onEl = document.getElementById('onNow');
   if (onEl) onEl.textContent = onlineReady ? '　' + T('online') + ' ' + (1 + remotes.size) : '';
 }
@@ -552,6 +558,30 @@ function checkRemoteDeaths() {
   }
 }
 
+// ---------------- high scores (this device, best per user name) ----------------
+function loadHighScores() {
+  try { return JSON.parse(localStorage.getItem('snakeHighScores') || '[]'); } catch (e) { return []; }
+}
+function recordHighScore() {
+  const sc = Math.floor(player.score);
+  if (sc <= 0) return;
+  const list = loadHighScores();
+  const ex = list.find(e => e.name === player.name);
+  if (ex) { if (sc > ex.score) { ex.score = sc; ex.date = Date.now(); } }
+  else list.push({ name: player.name, score: sc, date: Date.now() });
+  list.sort((a, b) => b.score - a.score);
+  try { localStorage.setItem('snakeHighScores', JSON.stringify(list.slice(0, 30))); } catch (e) {}
+  renderHighScores();
+}
+function renderHighScores() {
+  const el = document.getElementById('hsList');
+  if (!el) return;
+  const list = loadHighScores();
+  el.innerHTML = list.length
+    ? list.slice(0, 10).map((e, i) => `<div class="${player && e.name === player.name ? 'me' : ''}">${i + 1}. ${esc(e.name)}　${e.score}</div>`).join('')
+    : '<div>-</div>';
+}
+
 // ---------------- screens ----------------
 const startScr = document.getElementById('startScr'), overScr = document.getElementById('overScr');
 function startGame() {
@@ -566,6 +596,7 @@ function startGame() {
 function gameOver() {
   running = false;
   document.getElementById('overStats').textContent = T('finalLen') + Math.floor(player.score);
+  recordHighScore();
   setTimeout(() => overScr.classList.remove('hidden'), 650);
 }
 document.getElementById('playBtn').addEventListener('click', startGame);
@@ -580,7 +611,7 @@ document.querySelectorAll('.langbtn').forEach(b => b.addEventListener('click', (
 }));
 applyLang();
 startSync();
-document.getElementById('verTag').textContent = 'Snake Park v11';
+document.getElementById('verTag').textContent = 'Snake Park v12';
 spawnWorld(T('you')); // backdrop demo behind the start screen
 </script>
 </body>
