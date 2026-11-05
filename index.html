@@ -37,7 +37,7 @@
   .langbtn { font-size: 13px !important; padding: 6px 18px !important; background: #1a2447 !important;
              box-shadow: none !important; border: 1px solid #54679f !important; }
   .langbtn.sel { background: #2b6fe0 !important; }
-  #bgmBtn { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 7;
+  #bgmBtn { position: fixed; top: 68px; left: 10px; z-index: 7;
             padding: 7px 16px; border-radius: 999px; border: 1px solid rgba(140,160,255,.4);
             background: rgba(10,14,30,.62); color: #dfe8ff; font-size: 13px; font-weight: 700; }
   .hidden { display: none !important; }
@@ -72,8 +72,8 @@
 <script>
 "use strict";
 // ---------------- world constants ----------------
-const ARENA_R = 2600;            // arena radius (world units)
-const ORB_COUNT = 420;
+const ARENA_R = 2200;            // arena radius (world units)
+const ORB_COUNT = 900;
 const BOT_COUNT = 11;
 const BASE_SPEED = 2.35, BOOST_SPEED = 4.35;
 const TURN = 0.115;              // max turn per frame (rad)
@@ -131,7 +131,7 @@ let player = null;
 let running = false, camShake = 0, feedMsgs = [];
 
 function makeOrb(x, y, val, big) {
-  return { x, y, r: big ? rand(4.5, 6.5) : rand(2.2, 3.6), val: val || 1,
+  return { x, y, r: big ? rand(4.5, 6.5) : rand(2.6, 4.4), val: val || 1,
            color: COLORS[(Math.random() * COLORS.length) | 0], pulse: rand(0, 6.28) };
 }
 function seedOrbs() { orbs = []; for (let i = 0; i < ORB_COUNT; i++) { const p = randInArena(); orbs.push(makeOrb(p.x, p.y)); } }
@@ -140,12 +140,12 @@ function makeSnake(name, color, isPlayer, sx, sy) {
   const a = rand(0, Math.PI * 2);
   const s = { name, color, isPlayer: !!isPlayer, alive: true,
               x: sx, y: sy, ang: a, targetAng: a,
-              score: 12, pts: [], boost: false, aiT: 0, aiMode: 'eat', aiTx: 0, aiTy: 0 };
+              score: isPlayer ? 12 : 14 + Math.random() * 50, pts: [], boost: false, aiT: 0, aiMode: 'eat', aiTx: 0, aiTy: 0 };
   for (let i = 0; i < 90; i++) s.pts.push({ x: sx - Math.cos(a) * i * SEG, y: sy - Math.sin(a) * i * SEG });
   return s;
 }
-function radiusOf(s) { return 5.5 + Math.sqrt(Math.max(0, s.score)) * 0.62; }
-function trailLen(s) { return 26 + s.score * 3.1; }
+function radiusOf(s) { return 5.5 + Math.sqrt(Math.max(0, s.score)) * 0.75; }
+function trailLen(s) { return 40 + s.score * 7; }
 
 function spawnWorld(playerName) {
   seedOrbs(); snakes = [];
@@ -300,7 +300,7 @@ function draw() {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.fillStyle = '#0c1020'; ctx.fillRect(0, 0, W, H);
   if (!player) return;
-  const zoom = Math.max(0.55, Math.min(1.05, 46 / (radiusOf(player) * 2 + 26)));
+  const zoom = Math.max(0.5, Math.min(1.05, 52 / (radiusOf(player) * 2 + 30)));
   const camX = player.x, camY = player.y;
   // grid
   ctx.strokeStyle = 'rgba(110,130,220,0.10)'; ctx.lineWidth = 1;
