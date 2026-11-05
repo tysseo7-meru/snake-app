@@ -21,8 +21,7 @@
   #feed { left: 10px; bottom: 12px; font-size: 13px; color: #cdd8ff; text-shadow: 0 1px 3px #000; line-height: 1.6; }
   #verTag { position: fixed; bottom: 8px; left: 50%; transform: translateX(-50%); z-index: 5;
             font-size: 11px; color: rgba(160,175,220,0.55); pointer-events: none; }
-  #dbg { position: fixed; left: 10px; bottom: 108px; z-index: 5; font: 10px monospace;
-         color: rgba(180,200,255,0.65); pointer-events: none; white-space: pre; }
+
   #boostBtn { position: fixed; right: 18px; bottom: 22px; z-index: 6; width: 84px; height: 84px; border-radius: 50%;
               border: 2px solid rgba(160,180,255,.5); background: rgba(40,60,140,.45); color: #dfe8ff;
               font-size: 15px; font-weight: 700; display: none; user-select: none; -webkit-user-select: none; }
@@ -53,7 +52,6 @@
 <div id="status" class="hud"><span id="lenLabel">長さ</span> <b id="lenNow">0</b>　<span id="rankLabel">順位</span> <b id="rankNow">-</b></div>
 <div id="board" class="hud"><h4 id="boardTitle">ランキング</h4><div id="boardRows"></div></div>
 <div id="feed" class="hud"></div>
-<div id="dbg"></div>
 <div id="verTag"></div>
 <button id="boostBtn">ブースト</button>
 <button id="bgmBtn" class="bgmbtn">BGM：オン</button>
@@ -346,13 +344,6 @@ function hud(now) {
   rankEl.textContent = player.alive ? (alive.indexOf(player) + 1) + ' / ' + alive.length : '-';
   boardEl.innerHTML = alive.slice(0, 5).map((s, i) =>
     `<div class="${s.isPlayer ? 'me' : ''}">${i + 1}. ${s.name}　${Math.floor(s.score)}</div>`).join('');
-  const dbg = document.getElementById('dbg');
-  if (dbg && player) {
-    let drawn = 0, maxD = 0;
-    for (let i = 1; i < player.pts.length; i++) drawn += Math.hypot(player.pts[i].x - player.pts[i - 1].x, player.pts[i].y - player.pts[i - 1].y);
-    for (const q of player.pts) maxD = Math.max(maxD, Math.hypot(q.x - player.x, q.y - player.y));
-    dbg.textContent = `pts ${player.pts.length} trail ${Math.round(drawn)}/${Math.round(trailLen(player))} maxD ${Math.round(maxD)} fps ${Math.round(fpsEMA)} zoom ${(52 / (radiusOf(player) * 2 + 30)).toFixed(2)}`;
-  }
 }
 
 // ---------------- main loop ----------------
@@ -461,7 +452,7 @@ document.querySelectorAll('.langbtn').forEach(b => b.addEventListener('click', (
   applyLang();
 }));
 applyLang();
-document.getElementById('verTag').textContent = 'Snake Park v8';
+document.getElementById('verTag').textContent = 'Snake Park v9';
 spawnWorld(T('you')); // backdrop demo behind the start screen
 </script>
 </body>
