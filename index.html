@@ -255,8 +255,8 @@ function checkDeaths() {
     if (!s.alive) continue;
     if (Math.hypot(s.x, s.y) > ARENA_R - radiusOf(s) * 0.4) { killSnake(s); continue; }
     for (const o of snakes) {
-      if (!o.alive) continue;
-      const skip = o === s ? 14 : 4;
+      if (!o.alive || o === s) continue; // your own body never kills you (pass-through)
+      const skip = 4;
       for (let i = skip; i < o.pts.length; i += 3) {
         const p = o.pts[i], dx = s.x - p.x, dy = s.y - p.y, rr = radiusOf(o) * 0.92;
         if (dx * dx + dy * dy < rr * rr) { killSnake(s, o === s ? null : o.name); break; }
@@ -452,7 +452,7 @@ document.querySelectorAll('.langbtn').forEach(b => b.addEventListener('click', (
   applyLang();
 }));
 applyLang();
-document.getElementById('verTag').textContent = 'Snake Park v9';
+document.getElementById('verTag').textContent = 'Snake Park v10';
 spawnWorld(T('you')); // backdrop demo behind the start screen
 </script>
 </body>
