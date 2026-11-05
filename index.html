@@ -19,6 +19,8 @@
             border-radius: 10px; padding: 8px 12px; font-size: 14px; line-height: 1.5; }
   #status b { color: #ffd76a; }
   #feed { left: 10px; bottom: 12px; font-size: 13px; color: #cdd8ff; text-shadow: 0 1px 3px #000; line-height: 1.6; }
+  #verTag { position: fixed; bottom: 8px; left: 50%; transform: translateX(-50%); z-index: 5;
+            font-size: 11px; color: rgba(160,175,220,0.55); pointer-events: none; }
   #boostBtn { position: fixed; right: 18px; bottom: 22px; z-index: 6; width: 84px; height: 84px; border-radius: 50%;
               border: 2px solid rgba(160,180,255,.5); background: rgba(40,60,140,.45); color: #dfe8ff;
               font-size: 15px; font-weight: 700; display: none; user-select: none; -webkit-user-select: none; }
@@ -49,6 +51,7 @@
 <div id="status" class="hud"><span id="lenLabel">長さ</span> <b id="lenNow">0</b>　<span id="rankLabel">順位</span> <b id="rankNow">-</b></div>
 <div id="board" class="hud"><h4 id="boardTitle">ランキング</h4><div id="boardRows"></div></div>
 <div id="feed" class="hud"></div>
+<div id="verTag"></div>
 <button id="boostBtn">ブースト</button>
 <button id="bgmBtn" class="bgmbtn">BGM：オン</button>
 
@@ -265,19 +268,15 @@ function feed(msg) {
 // ---------------- rendering ----------------
 function drawSnake(s, camX, camY, zoom) {
   const r = radiusOf(s);
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  for (let pass = 0; pass < 2; pass++) {
-    ctx.beginPath();
-    let pen = false;
-    for (let i = s.pts.length - 1; i >= 0; i -= 2) {
-      const p = s.pts[i], x = (p.x - camX) * zoom + W / 2, y = (p.y - camY) * zoom + H / 2;
-      if (x < -60 || x > W + 60 || y < -60 || y > H + 60) { pen = false; continue; }
-      if (!pen) { ctx.moveTo(x, y); pen = true; } else ctx.lineTo(x, y);
-    }
-    ctx.strokeStyle = pass === 0 ? s.color : 'rgba(255,255,255,0.16)';
-    ctx.lineWidth = (pass === 0 ? r * 2 : r * 1.1) * zoom;
-    ctx.globalAlpha = s.alive ? (pass === 0 ? 0.95 : 0.5) : 0.25;
-    ctx.stroke();
+  // body: discs stamped along the trail, tail first (robust rendering on any client)
+  const n = s.pts.length;
+  for (let i = n - 1; i >= 0; i -= 2) {
+    const p = s.pts[i];
+    const x = (p.x - camX) * zoom + W / 2, y = (p.y - camY) * zoom + H / 2;
+    if (x < -40 || x > W + 40 || y < -40 || y > H + 40) continue;
+    const tailT = Math.min(1, (n - i) / (n * 0.25 + 1));
+    ctx.beginPath(); ctx.arc(x, y, Math.max(1.2, r * zoom * (0.35 + 0.65 * tailT)), 0, 6.29);
+    ctx.fillStyle = s.color; ctx.globalAlpha = s.alive ? 0.95 : 0.25; ctx.fill();
   }
   ctx.globalAlpha = 1;
   // head disc (guarantees the face sits on the body)
@@ -446,6 +445,7 @@ document.querySelectorAll('.langbtn').forEach(b => b.addEventListener('click', (
   applyLang();
 }));
 applyLang();
+document.getElementById('verTag').textContent = 'Snake Park v6';
 spawnWorld(T('you')); // backdrop demo behind the start screen
 </script>
 </body>
