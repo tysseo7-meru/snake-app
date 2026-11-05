@@ -49,7 +49,7 @@
 <body>
 <canvas id="game"></canvas>
 
-<div id="status" class="hud"><span id="lenLabel">長さ</span> <b id="lenNow">0</b>　<span id="rankLabel">順位</span> <b id="rankNow">-</b></div>
+<div id="status" class="hud"><span id="lenLabel">長さ</span> <b id="lenNow">0</b>　<span id="rankLabel">順位</span> <b id="rankNow">-</b><span id="onNow"></span></div>
 <div id="board" class="hud"><h4 id="boardTitle">ランキング</h4><div id="boardRows"></div></div>
 <div id="feed" class="hud"></div>
 <div id="verTag"></div>
@@ -102,12 +102,12 @@ const STR = {
         ph: '名前（例：アキラ）', play: 'あそぶ', how: 'PC：マウスで向き、押している間ブースト／ スマホ：指で向き、下のボタンでブースト',
         len: '長さ', rank: '順位', board: 'ランキング', boost: 'ブースト', over: 'ゲームオーバー', again: 'もう一度',
         finalLen: '最終の長さ： ', you: 'あなた', youDown: 'あなたは倒れた…', down: ' が倒れた', by: '（', byEnd: '）',
-        bgmOn: 'BGM：オン', bgmOff: 'BGM：オフ' },
+        bgmOn: 'BGM：オン', bgmOff: 'BGM：オフ', online: 'オンライン' },
   en: { title: 'Snake Park', desc: 'Eat the glowing orbs to grow longer. If your head touches another snake\'s body, you lose. Make others crash into you and eat the orbs they drop. Hold to boost (faster, but you slowly shrink).',
         ph: 'Name (e.g. Alex)', play: 'Play', how: 'PC: steer with the mouse, hold to boost / Phone: steer with your finger, use the button to boost',
         len: 'Length', rank: 'Rank', board: 'Ranking', boost: 'BOOST', over: 'Game Over', again: 'Play again',
         finalLen: 'Final length: ', you: 'You', youDown: 'You went down…', down: ' went down', by: ' (by ', byEnd: ')',
-        bgmOn: 'BGM: On', bgmOff: 'BGM: Off' }
+        bgmOn: 'BGM: On', bgmOff: 'BGM: Off', online: 'Online' }
 };
 function T(k) { return STR[LANG][k]; }
 function botNames() { return BOT_NAMES; }
@@ -247,8 +247,14 @@ function killSnake(s, byName) {
   const n = Math.min(s.pts.length, 26 + (s.score | 0));
   for (let i = 0; i < n; i += 2) { const p = s.pts[i]; if (p) orbs.push(makeOrb(p.x + rand(-6, 6), p.y + rand(-6, 6), 2, true)); }
   feed(s.isPlayer ? T('youDown') : s.name + T('down') + (byName ? T('by') + byName + T('byEnd') : ''));
-  if (s.isPlayer) { gameOver(); }
-  else setTimeout(() => { if (running) { const p = randInArena(300); const ns = makeSnake(s.name, s.color, false, p.x, p.y); snakes[snakes.indexOf(s)] = ns; } }, 2600);
+  if (s.isPlayer) { publishNow(); gameOver(); }
+  else setTimeout(() => {
+    if (!running) return;
+    const idx = snakes.indexOf(s);
+    if (idx < 0) return;
+    if (botCount() > targetBots()) snakes.splice(idx, 1); // enough humans in: retire this bot
+    else { const p = randInArena(300); snakes[idx] = makeSnake(s.name, s.color, false, p.x, p.y); }
+  }, 2600);
 }
 function checkDeaths() {
   for (const s of snakes) {
@@ -330,7 +336,7 @@ function draw() {
     ctx.beginPath(); ctx.arc(x, y, rr, 0, 6.29); ctx.globalAlpha = 0.95; ctx.fill();
   }
   ctx.globalAlpha = 1;
-  const sorted = [...snakes].sort((a, b) => radiusOf(a) - radiusOf(b));
+  const sorted = [...snakes, ...remoteRenderList()].sort((a, b) => radiusOf(a) - radiusOf(b));
   for (const s of sorted) drawSnake(s, camX, camY, zoom);
 }
 
@@ -339,11 +345,15 @@ const lenEl = document.getElementById('lenNow'), rankEl = document.getElementByI
 let hudT = 0;
 function hud(now) {
   if (now - hudT < 220) return; hudT = now;
-  const alive = snakes.filter(s => s.alive).sort((a, b) => b.score - a.score);
+  const entries = snakes.filter(s => s.alive).map(s => ({ name: s.name, score: s.score, me: s.isPlayer, ref: s }));
+  for (const r of activeRemotes()) entries.push({ name: r.name, score: r.score, me: false, ref: null });
+  entries.sort((a, b) => b.score - a.score);
   lenEl.textContent = Math.floor(player.score);
-  rankEl.textContent = player.alive ? (alive.indexOf(player) + 1) + ' / ' + alive.length : '-';
-  boardEl.innerHTML = alive.slice(0, 5).map((s, i) =>
-    `<div class="${s.isPlayer ? 'me' : ''}">${i + 1}. ${s.name}　${Math.floor(s.score)}</div>`).join('');
+  rankEl.textContent = player.alive ? (entries.findIndex(e => e.ref === player) + 1) + ' / ' + entries.length : '-';
+  boardEl.innerHTML = entries.slice(0, 5).map((s, i) =>
+    `<div class="${s.me ? 'me' : ''}">${i + 1}. ${s.name}　${Math.floor(s.score)}</div>`).join('');
+  const onEl = document.getElementById('onNow');
+  if (onEl) onEl.textContent = onlineReady ? '　' + T('online') + ' ' + (1 + remotes.size) : '';
 }
 
 // ---------------- main loop ----------------
@@ -364,6 +374,8 @@ function loop(now) {
       turnToward(s, dt); stepSnake(s, dt); eatOrbs(s);
     }
     checkDeaths();
+    stepRemotes(dt);
+    checkRemoteDeaths();
     hud(now);
   }
   draw();
@@ -426,6 +438,120 @@ function toggleBgm() {
   if (bgmOn) bgmStart(); else bgmStop();
 }
 
+// ---------------- online co-play (Firestore, project moco-othello-6e5c4) ----------------
+// Other players who are in the game appear in the same arena; AI fills the rest.
+// Orbs and AI snakes stay local to each client; only player snakes are shared.
+// If Firebase cannot be reached, the game simply runs solo.
+const FB_CONFIG = {
+  apiKey: "AIzaSyBsIRq3XTsDkIFj4sxzmGS9DgT53b2VMUs",
+  authDomain: "moco-othello-6e5c4.firebaseapp.com",
+  projectId: "moco-othello-6e5c4",
+  storageBucket: "moco-othello-6e5c4.firebasestorage.app",
+  messagingSenderId: "276791873988",
+  appId: "1:276791873988:web:38b42f081c22e6361c5491"
+};
+let myId = null;
+try { myId = localStorage.getItem('snakePlayerId'); if (!myId) { myId = 'p' + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36); localStorage.setItem('snakePlayerId', myId); } } catch (e) { myId = 'p' + Date.now().toString(36); }
+let fbDb = null, fbCol = null, onlineReady = false;
+const remotes = new Map(); // id -> {name,color,score,alive,x,y,ang,pts,dispX,dispY,seenAt,droppedOrbs}
+function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); }
+function startSync() {
+  loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js')
+    .then(() => loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js'))
+    .then(() => {
+      firebase.initializeApp(FB_CONFIG);
+      fbDb = firebase.firestore();
+      fbCol = fbDb.collection('snakePlayers');
+      onlineReady = true;
+      fbCol.onSnapshot(snap => {
+        const now = Date.now();
+        snap.forEach(doc => {
+          if (doc.id === myId) return;
+          const d = doc.data();
+          if (!d || now - (d.t || 0) > 6000) return; // stale = gone
+          let r = remotes.get(doc.id);
+          if (!r) { r = { dispX: d.x, dispY: d.y, droppedOrbs: false }; remotes.set(doc.id, r); }
+          const wasAlive = r.alive;
+          Object.assign(r, { name: d.name, color: d.color, score: d.score || 0, alive: !!d.alive,
+                             x: d.x, y: d.y, ang: d.ang || 0, seenAt: now,
+                             pts: decodePts(d.pts) });
+          if (wasAlive && !r.alive && !r.droppedOrbs) { // they died on their screen: drop their orbs here too
+            r.droppedOrbs = true;
+            for (let i = 0; i < r.pts.length; i += 2) orbs.push(makeOrb(r.pts[i].x + rand(-6, 6), r.pts[i].y + rand(-6, 6), 2, true));
+            feed(r.name + T('down'));
+          }
+          if (r.alive) r.droppedOrbs = false;
+        });
+        // prune remotes that went stale
+        for (const [id, r] of remotes) if (now - r.seenAt > 6000) remotes.delete(id);
+        topUpBots();
+      }, () => { /* snapshot error: stay solo */ });
+      setInterval(publishNow, 120);
+      setInterval(() => { const now = Date.now(); for (const [id, r] of remotes) if (now - r.seenAt > 6000) remotes.delete(id); }, 2500);
+    })
+    .catch(() => { /* offline: solo mode */ });
+}
+function encodePts(pts) {
+  const out = [];
+  for (let i = 0; i < pts.length && out.length < 440; i += 3) { out.push(Math.round(pts[i].x), Math.round(pts[i].y)); }
+  return out;
+}
+function decodePts(arr) {
+  const out = [];
+  if (Array.isArray(arr)) for (let i = 0; i + 1 < arr.length; i += 2) out.push({ x: arr[i], y: arr[i + 1] });
+  return out;
+}
+function publishNow() {
+  if (!onlineReady || !fbCol || !player || !running) return;
+  try {
+    fbCol.doc(myId).set({
+      name: player.name, color: player.color,
+      x: Math.round(player.x), y: Math.round(player.y), ang: Math.round(player.ang * 100) / 100,
+      score: Math.floor(player.score), alive: player.alive,
+      pts: encodePts(player.pts), t: Date.now()
+    }).catch(() => {});
+  } catch (e) {}
+}
+function leaveOnline() {
+  if (fbCol && myId) { try { fbCol.doc(myId).delete().catch(() => {}); } catch (e) {} }
+}
+window.addEventListener('pagehide', leaveOnline);
+function activeRemotes() { return [...remotes.values()].filter(r => r.alive); }
+function targetBots() { return Math.max(3, BOT_COUNT - activeRemotes().length); }
+function botCount() { return snakes.filter(s => !s.isPlayer).length; }
+function topUpBots() {
+  if (!running) return;
+  if (botCount() < targetBots()) {
+    const p = randInArena(300), i = snakes.filter(s => !s.isPlayer).length;
+    snakes.push(makeSnake(botNames()[i % botNames().length], COLORS[i % COLORS.length], false, p.x, p.y));
+  }
+}
+function remoteRenderList() {
+  const out = [];
+  for (const r of remotes.values()) {
+    const dx = r.dispX - r.x, dy = r.dispY - r.y;
+    out.push({ name: r.name, color: r.color, isPlayer: false, alive: r.alive,
+               x: r.dispX, y: r.dispY, ang: r.ang, score: r.score,
+               pts: r.pts.map(p => ({ x: p.x + dx, y: p.y + dy })) });
+  }
+  return out;
+}
+function stepRemotes(dt) {
+  const k = Math.min(1, dt * 7);
+  for (const r of remotes.values()) { r.dispX += (r.x - r.dispX) * k; r.dispY += (r.y - r.dispY) * k; }
+}
+function checkRemoteDeaths() {
+  if (!player || !player.alive) return;
+  for (const r of remotes.values()) {
+    if (!r.alive) continue;
+    const rr = radiusOf(r) * 0.92;
+    for (let i = 4; i < r.pts.length; i += 3) {
+      const dx = player.x - r.pts[i].x, dy = player.y - r.pts[i].y;
+      if (dx * dx + dy * dy < rr * rr) { killSnake(player, r.name); publishNow(); return; }
+    }
+  }
+}
+
 // ---------------- screens ----------------
 const startScr = document.getElementById('startScr'), overScr = document.getElementById('overScr');
 function startGame() {
@@ -434,6 +560,7 @@ function startGame() {
   spawnWorld(name);
   bgmStart();
   running = true;
+  publishNow();
   startScr.classList.add('hidden'); overScr.classList.add('hidden');
 }
 function gameOver() {
@@ -452,7 +579,8 @@ document.querySelectorAll('.langbtn').forEach(b => b.addEventListener('click', (
   applyLang();
 }));
 applyLang();
-document.getElementById('verTag').textContent = 'Snake Park v10';
+startSync();
+document.getElementById('verTag').textContent = 'Snake Park v11';
 spawnWorld(T('you')); // backdrop demo behind the start screen
 </script>
 </body>
