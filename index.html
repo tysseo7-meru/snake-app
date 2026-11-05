@@ -37,6 +37,9 @@
   .langbtn { font-size: 13px !important; padding: 6px 18px !important; background: #1a2447 !important;
              box-shadow: none !important; border: 1px solid #54679f !important; }
   .langbtn.sel { background: #2b6fe0 !important; }
+  #bgmBtn { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 7;
+            padding: 7px 16px; border-radius: 999px; border: 1px solid rgba(140,160,255,.4);
+            background: rgba(10,14,30,.62); color: #dfe8ff; font-size: 13px; font-weight: 700; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -47,11 +50,13 @@
 <div id="board" class="hud"><h4 id="boardTitle">ランキング</h4><div id="boardRows"></div></div>
 <div id="feed" class="hud"></div>
 <button id="boostBtn">ブースト</button>
+<button id="bgmBtn" class="bgmbtn">BGM：オン</button>
 
 <div id="startScr" class="screen">
   <h1 id="titleTxt">スネークパーク</h1>
   <p id="descTxt">光る粒を食べて長くなろう。他の蛇の体に頭が当たると負け。逆に、自分の体に当てさせれば相手が粒になって食べられる。押している間はブースト（速くなる代わりに少しずつ短くなる）。</p>
   <div class="langrow"><button class="langbtn" data-lang="ja">日本語</button><button class="langbtn" data-lang="en">English</button></div>
+  <div class="langrow"><button class="langbtn bgmbtn">BGM：オン</button></div>
   <input id="nameIn" maxlength="12" placeholder="名前（例：アキラ）">
   <button id="playBtn">あそぶ</button>
   <p id="howTxt" style="font-size:12px;color:#7e8cbd">PC：マウスで向き、押している間ブースト／ スマホ：指で向き、下のボタンでブースト</p>
@@ -93,11 +98,13 @@ const STR = {
   ja: { title: 'スネークパーク', desc: '光る粒を食べて長くなろう。他の蛇の体に頭が当たると負け。逆に、自分の体に当てさせれば相手が粒になって食べられる。押している間はブースト（速くなる代わりに少しずつ短くなる）。',
         ph: '名前（例：アキラ）', play: 'あそぶ', how: 'PC：マウスで向き、押している間ブースト／ スマホ：指で向き、下のボタンでブースト',
         len: '長さ', rank: '順位', board: 'ランキング', boost: 'ブースト', over: 'ゲームオーバー', again: 'もう一度',
-        finalLen: '最終の長さ： ', you: 'あなた', youDown: 'あなたは倒れた…', down: ' が倒れた', by: '（', byEnd: '）' },
+        finalLen: '最終の長さ： ', you: 'あなた', youDown: 'あなたは倒れた…', down: ' が倒れた', by: '（', byEnd: '）',
+        bgmOn: 'BGM：オン', bgmOff: 'BGM：オフ' },
   en: { title: 'Snake Park', desc: 'Eat the glowing orbs to grow longer. If your head touches another snake\'s body, you lose. Make others crash into you and eat the orbs they drop. Hold to boost (faster, but you slowly shrink).',
         ph: 'Name (e.g. Alex)', play: 'Play', how: 'PC: steer with the mouse, hold to boost / Phone: steer with your finger, use the button to boost',
         len: 'Length', rank: 'Rank', board: 'Ranking', boost: 'BOOST', over: 'Game Over', again: 'Play again',
-        finalLen: 'Final length: ', you: 'You', youDown: 'You went down…', down: ' went down', by: ' (by ', byEnd: ')' }
+        finalLen: 'Final length: ', you: 'You', youDown: 'You went down…', down: ' went down', by: ' (by ', byEnd: ')',
+        bgmOn: 'BGM: On', bgmOff: 'BGM: Off' }
 };
 function T(k) { return STR[LANG][k]; }
 function botNames() { return LANG === 'en' ? BOT_NAMES_EN : BOT_NAMES_JA; }
@@ -110,6 +117,7 @@ function applyLang() {
   set('boostBtn', T('boost')); set('overTxt', T('over')); set('againBtn', T('again'));
   const ni = document.getElementById('nameIn'); if (ni) ni.placeholder = T('ph');
   document.querySelectorAll('.langbtn').forEach(b => b.classList.toggle('sel', b.dataset.lang === LANG));
+  refreshBgmBtns();
 }
 const rand = (a, b) => a + Math.random() * (b - a);
 function randInArena(margin) {
@@ -354,12 +362,69 @@ function loop(now) {
 }
 requestAnimationFrame(loop);
 
+// ---------------- BGM (WebAudio synthesis, original loop) ----------------
+let bgmOn = true;
+try { bgmOn = localStorage.getItem('snakeBgm') !== 'off'; } catch (e) {}
+let actx = null, master = null, bgmTimer = null, nextBeat = 0, beatIdx = 0;
+const BEAT = 60 / 116;
+const BARS = [
+  { root: 48, tones: [60, 64, 67] }, { root: 43, tones: [59, 62, 67] },
+  { root: 45, tones: [60, 64, 69] }, { root: 41, tones: [60, 65, 69] },
+  { root: 48, tones: [60, 64, 67] }, { root: 43, tones: [59, 62, 67] },
+  { root: 41, tones: [60, 65, 69] }, { root: 43, tones: [59, 62, 67] }
+];
+const LEAD = [76,79,84,79, 74,79,83,79, 81,76,81,84, 81,77,81,79,
+              76,79,76,72, 74,71,74,79, 77,81,79,76, 74,71,67,0];
+function midiHz(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+function tone(m, t, dur, type, vol) {
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.value = midiHz(m);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(master);
+  o.start(t); o.stop(t + dur + 0.05);
+}
+function scheduleBeat(i, t) {
+  const bar = BARS[(i / 4 | 0) % 8], inBar = i % 4;
+  const lead = LEAD[i % 32];
+  if (lead) tone(lead, t, BEAT * 0.92, 'triangle', 0.15);
+  tone(inBar % 2 === 0 ? bar.root : bar.root + 7, t, BEAT * 0.95, 'sine', 0.13);
+  tone(bar.tones[(i + 1) % 3] + 12, t + BEAT / 2, BEAT * 0.4, 'sine', 0.032);
+}
+function bgmStart() {
+  if (!bgmOn) return;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  if (!actx) { actx = new AC(); master = actx.createGain(); master.gain.value = 0.9; master.connect(actx.destination); }
+  if (actx.state === 'suspended') actx.resume();
+  if (bgmTimer) return;
+  beatIdx = 0; nextBeat = actx.currentTime + 0.06;
+  bgmTimer = setInterval(() => {
+    while (nextBeat < actx.currentTime + 0.14) { scheduleBeat(beatIdx, nextBeat); nextBeat += BEAT; beatIdx++; }
+  }, 42);
+}
+function bgmStop() {
+  if (bgmTimer) { clearInterval(bgmTimer); bgmTimer = null; }
+  if (actx) actx.suspend();
+}
+function refreshBgmBtns() {
+  document.querySelectorAll('.bgmbtn').forEach(b => { b.textContent = bgmOn ? T('bgmOn') : T('bgmOff'); });
+}
+function toggleBgm() {
+  bgmOn = !bgmOn;
+  try { localStorage.setItem('snakeBgm', bgmOn ? 'on' : 'off'); } catch (e) {}
+  refreshBgmBtns();
+  if (bgmOn) bgmStart(); else bgmStop();
+}
+
 // ---------------- screens ----------------
 const startScr = document.getElementById('startScr'), overScr = document.getElementById('overScr');
 function startGame() {
   const name = document.getElementById('nameIn').value.trim() || T('you');
   try { localStorage.setItem('snakeName', name); } catch (e) {}
   spawnWorld(name);
+  bgmStart();
   running = true;
   startScr.classList.add('hidden'); overScr.classList.add('hidden');
 }
@@ -372,6 +437,7 @@ document.getElementById('playBtn').addEventListener('click', startGame);
 document.getElementById('againBtn').addEventListener('click', startGame);
 document.getElementById('nameIn').addEventListener('keydown', e => { if (e.key === 'Enter') startGame(); });
 try { const n = localStorage.getItem('snakeName'); if (n) document.getElementById('nameIn').value = n; } catch (e) {}
+document.querySelectorAll('.bgmbtn').forEach(b => b.addEventListener('click', toggleBgm));
 document.querySelectorAll('.langbtn').forEach(b => b.addEventListener('click', () => {
   LANG = b.dataset.lang;
   try { localStorage.setItem('snakeLang', LANG); } catch (e) {}
