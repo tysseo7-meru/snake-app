@@ -76,7 +76,7 @@ const ARENA_R = 2200;            // arena radius (world units)
 const ORB_COUNT = 900;
 const BOT_COUNT = 11;
 const BASE_SPEED = 2.35, BOOST_SPEED = 4.35;
-const TURN = 0.115;              // max turn per frame (rad)
+const TURN = 0.095;              // max turn per frame (rad)
 const SEG = 4.2;                 // trail point spacing
 
 const cv = document.getElementById('game'), ctx = cv.getContext('2d');
@@ -159,9 +159,9 @@ function spawnWorld(playerName) {
 }
 
 // ---------------- input ----------------
-let pointer = null, pointerDown = false;
-cv.addEventListener('pointermove', e => { pointer = { x: e.clientX, y: e.clientY }; });
-cv.addEventListener('pointerdown', e => { pointer = { x: e.clientX, y: e.clientY }; pointerDown = true; });
+let pointer = null, pointerDown = false, pointerType = 'mouse';
+cv.addEventListener('pointermove', e => { pointer = { x: e.clientX, y: e.clientY }; pointerType = e.pointerType || 'mouse'; });
+cv.addEventListener('pointerdown', e => { pointer = { x: e.clientX, y: e.clientY }; pointerDown = true; pointerType = e.pointerType || 'mouse'; });
 window.addEventListener('pointerup', () => { pointerDown = false; });
 const boostBtn = document.getElementById('boostBtn');
 let touchBoost = false;
@@ -211,7 +211,7 @@ function stepSnake(s, dt) {
   s.x += Math.cos(s.ang) * sp; s.y += Math.sin(s.ang) * sp;
   if (wantBoost) { // drain + drop crumbs
     s.score -= 0.055 * dt;
-    if (Math.random() < 0.16 * dt && orbs.length < ORB_COUNT + 500) {
+    if (Math.random() < 0.08 * dt && orbs.length < ORB_COUNT + 500) {
       const tail = s.pts[s.pts.length - 1];
       orbs.push(makeOrb(tail.x + rand(-4, 4), tail.y + rand(-4, 4), 1));
     }
@@ -268,11 +268,11 @@ function drawSnake(s, camX, camY, zoom) {
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   for (let pass = 0; pass < 2; pass++) {
     ctx.beginPath();
-    const step = pass === 0 ? 2 : 2;
-    for (let i = s.pts.length - 1; i >= 0; i -= step) {
+    let pen = false;
+    for (let i = s.pts.length - 1; i >= 0; i -= 2) {
       const p = s.pts[i], x = (p.x - camX) * zoom + W / 2, y = (p.y - camY) * zoom + H / 2;
-      if (x < -60 || x > W + 60 || y < -60 || y > H + 60) continue;
-      if (i === s.pts.length - 1) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      if (x < -60 || x > W + 60 || y < -60 || y > H + 60) { pen = false; continue; }
+      if (!pen) { ctx.moveTo(x, y); pen = true; } else ctx.lineTo(x, y);
     }
     ctx.strokeStyle = pass === 0 ? s.color : 'rgba(255,255,255,0.16)';
     ctx.lineWidth = (pass === 0 ? r * 2 : r * 1.1) * zoom;
@@ -347,8 +347,11 @@ function loop(now) {
   requestAnimationFrame(loop);
   const dt = Math.min(2.2, last ? (now - last) / 16.7 : 1); last = now;
   if (running && player) {
-    if (pointer) player.targetAng = Math.atan2(pointer.y - H / 2, pointer.x - W / 2);
-    player.boost = pointerDown || touchBoost;
+    if (pointer) {
+      const pdx = pointer.x - W / 2, pdy = pointer.y - H / 2;
+      if (pdx * pdx + pdy * pdy > 30 * 30) player.targetAng = Math.atan2(pdy, pdx); // dead zone near center: keep heading
+    }
+    player.boost = touchBoost || (pointerDown && pointerType === 'mouse'); // touch steering is NOT boost
     for (const s of snakes) {
       if (!s.alive) continue;
       if (!s.isPlayer) aiThink(s);
