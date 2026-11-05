@@ -24,6 +24,9 @@
   #errLine { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 99; display: none;
              background: rgba(160,20,30,.92); color: #fff; font-size: 12px; padding: 6px 12px;
              border-radius: 8px; max-width: 92vw; pointer-events: none; }
+  #stateTop { position: fixed; top: 118px; left: 8px; z-index: 40; pointer-events: none;
+              background: rgba(10,14,30,.78); border: 1px solid rgba(140,160,255,.35); border-radius: 8px;
+              color: #ffe27a; font-size: 13px; font-weight: 700; padding: 4px 10px; white-space: nowrap; }
   #verTag { position: fixed; bottom: 8px; left: 50%; transform: translateX(-50%); z-index: 5;
             font-size: 11px; color: rgba(160,175,220,0.55); pointer-events: none; }
 
@@ -64,6 +67,7 @@
 <div id="verTag"></div>
 <div id="stateLine"></div>
 <div id="errLine"></div>
+<div id="stateTop"></div>
 <button id="boostBtn">ブースト</button>
 <button id="bgmBtn" class="bgmbtn">BGM：オン</button>
 
@@ -258,8 +262,11 @@ function killSnake(s, byName) {
   s.alive = false;
   const n = Math.min(s.pts.length, 26 + (s.score | 0));
   for (let i = 0; i < n; i += 2) { const p = s.pts[i]; if (p) orbs.push(makeOrb(p.x + rand(-6, 6), p.y + rand(-6, 6), 2, true)); }
-  feed(s.isPlayer ? T('youDown') : s.name + T('down') + (byName ? T('by') + byName + T('byEnd') : ''));
-  if (s.isPlayer) { publishNow(); gameOver(); }
+  try { feed(s.isPlayer ? T('youDown') : s.name + T('down') + (byName ? T('by') + byName + T('byEnd') : '')); } catch (e) { showErr('feed: ' + (e && e.message)); }
+  if (s.isPlayer) {
+    try { publishNow(); } catch (e) { showErr('pub: ' + (e && e.message)); }
+    try { gameOver(); } catch (e) { showErr('over: ' + (e && e.message)); forceOverlay(); }
+  }
   else setTimeout(() => {
     if (!running) return;
     const idx = snakes.indexOf(s);
@@ -377,20 +384,22 @@ function loop(now) {
   if (last) fpsEMA = fpsEMA * 0.95 + (1000 / Math.max(1, now - last)) * 0.05;
   const dt = Math.min(2.2, last ? (now - last) / 16.7 : 1); last = now;
   if (running && player) {
-    if (pointer) {
-      const pdx = pointer.x - W / 2, pdy = pointer.y - H / 2;
-      if (pdx * pdx + pdy * pdy > 30 * 30) player.targetAng = Math.atan2(pdy, pdx); // dead zone near center: keep heading
-    }
-    player.boost = touchBoost || (pointerDown && pointerType === 'mouse'); // touch steering is NOT boost
-    for (const s of snakes) {
-      if (!s.alive) continue;
-      if (!s.isPlayer) aiThink(s);
-      turnToward(s, dt); stepSnake(s, dt); eatOrbs(s);
-    }
-    checkDeaths();
-    stepRemotes(dt);
-    checkRemoteDeaths();
-    hud(now);
+    try {
+      if (pointer) {
+        const pdx = pointer.x - W / 2, pdy = pointer.y - H / 2;
+        if (pdx * pdx + pdy * pdy > 30 * 30) player.targetAng = Math.atan2(pdy, pdx); // dead zone near center: keep heading
+      }
+      player.boost = touchBoost || (pointerDown && pointerType === 'mouse'); // touch steering is NOT boost
+      for (const s of snakes) {
+        if (!s.alive) continue;
+        if (!s.isPlayer) aiThink(s);
+        turnToward(s, dt); stepSnake(s, dt); eatOrbs(s);
+      }
+      checkDeaths();
+      stepRemotes(dt);
+      checkRemoteDeaths();
+      hud(now);
+    } catch (e) { showErr('loop: ' + (e && e.message)); }
   }
   draw();
 }
@@ -622,29 +631,30 @@ document.querySelectorAll('.langbtn').forEach(b => b.addEventListener('click', (
 }));
 applyLang();
 startSync();
-document.getElementById('verTag').textContent = 'Snake Park v15';
+document.getElementById('verTag').textContent = 'Snake Park v16';
 
 // ---------------- diagnostics + game-over watchdog ----------------
-window.addEventListener('error', e => {
+function showErr(msg) {
   const el = document.getElementById('errLine');
-  if (el) { el.style.display = 'block'; el.textContent = 'ERR: ' + (e.message || 'unknown'); }
-});
-window.addEventListener('unhandledrejection', e => {
-  const el = document.getElementById('errLine');
-  if (el) { el.style.display = 'block'; el.textContent = 'ERR: ' + ((e.reason && e.reason.message) || 'promise'); }
-});
+  if (el) { el.style.display = 'block'; el.textContent = 'ERR: ' + msg; }
+  try { localStorage.setItem('snakeLastErr', String(msg).slice(0, 200)); } catch (e) {}
+}
+function forceOverlay() {
+  try { document.getElementById('overStats').textContent = T('finalLen') + Math.floor(player.score); } catch (e) {}
+  overScr.classList.remove('hidden');
+}
+window.addEventListener('error', e => showErr(e.message || 'unknown'));
+window.addEventListener('unhandledrejection', e => showErr((e.reason && e.reason.message) || 'promise'));
 let deadAt = 0, lastFrameNo = 0;
 setInterval(() => {
   const dispFps = (frameNo - lastFrameNo) * 2; lastFrameNo = frameNo;
-  const sl = document.getElementById('stateLine');
-  if (sl) sl.textContent = 'alive:' + (player ? (player.alive ? 1 : 0) : '-') + ' run:' + (running ? 1 : 0)
+  const txt = 'v16 alive:' + (player ? (player.alive ? 1 : 0) : '-') + ' run:' + (running ? 1 : 0)
     + ' fps:' + dispFps + ' ov:' + (overScr.classList.contains('hidden') ? 'hid' : 'vis');
+  const sl = document.getElementById('stateLine'); if (sl) sl.textContent = txt;
+  const st = document.getElementById('stateTop'); if (st) st.textContent = txt;
   if (player && !player.alive) {
     if (!deadAt) deadAt = Date.now();
-    if (Date.now() - deadAt > 1500 && overScr.classList.contains('hidden')) {
-      try { document.getElementById('overStats').textContent = T('finalLen') + Math.floor(player.score); } catch (e) {}
-      overScr.classList.remove('hidden'); // watchdog: the game-over screen must appear
-    }
+    if (Date.now() - deadAt > 1500 && overScr.classList.contains('hidden')) forceOverlay(); // watchdog: the game-over screen must appear
   } else deadAt = 0;
 }, 500);
 spawnWorld(T('you')); // backdrop demo behind the start screen
