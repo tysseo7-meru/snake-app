@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>スネークパーク</title>
+<style>
+  :root { color-scheme: dark; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; background: #0c1020; }
+  body { font-family: -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; color: #eef; }
+  #game { position: fixed; inset: 0; display: block; touch-action: none; }
+  .hud { position: fixed; z-index: 5; pointer-events: none; }
+  #board { top: 10px; right: 10px; background: rgba(10,14,30,.62); border: 1px solid rgba(140,160,255,.25);
+           border-radius: 10px; padding: 8px 12px; font-size: 13px; line-height: 1.55; min-width: 168px; }
+  #board h4 { font-size: 12px; color: #9fb4ff; letter-spacing: .08em; margin-bottom: 2px; }
+  #board .me { color: #ffd76a; font-weight: 700; }
+  #status { left: 10px; top: 10px; background: rgba(10,14,30,.62); border: 1px solid rgba(140,160,255,.25);
+            border-radius: 10px; padding: 8px 12px; font-size: 14px; line-height: 1.5; }
+  #status b { color: #ffd76a; }
+  #feed { left: 10px; bottom: 12px; font-size: 13px; color: #cdd8ff; text-shadow: 0 1px 3px #000; line-height: 1.6; }
+  #boostBtn { position: fixed; right: 18px; bottom: 22px; z-index: 6; width: 84px; height: 84px; border-radius: 50%;
+              border: 2px solid rgba(160,180,255,.5); background: rgba(40,60,140,.45); color: #dfe8ff;
+              font-size: 15px; font-weight: 700; display: none; user-select: none; -webkit-user-select: none; }
+  #boostBtn.on { background: rgba(255,180,60,.55); color: #20160a; }
+  .screen { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center;
+            justify-content: center; gap: 14px; background: rgba(6,8,18,.78); text-align: center; padding: 20px; }
+  .screen h1 { font-size: 34px; letter-spacing: .04em; color: #aee2ff; text-shadow: 0 0 18px rgba(90,160,255,.65); }
+  .screen p { color: #b9c6ee; font-size: 14px; line-height: 1.7; max-width: 430px; }
+  .screen input { pointer-events: auto; font-size: 17px; padding: 10px 14px; border-radius: 10px; border: 1px solid #54679f;
+                  background: #131a33; color: #fff; width: 240px; text-align: center; }
+  .screen button { pointer-events: auto; font-size: 18px; font-weight: 700; padding: 12px 34px; border-radius: 999px;
+                   border: none; background: linear-gradient(180deg, #57b6ff, #2b6fe0); color: #fff; cursor: pointer;
+                   box-shadow: 0 4px 18px rgba(60,130,255,.5); }
+  #overStats { font-size: 16px; color: #ffd76a; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="status" class="hud">長さ <b id="lenNow">0</b>　順位 <b id="rankNow">-</b></div>
+<div id="board" class="hud"><h4>ランキング</h4><div id="boardRows"></div></div>
+<div id="feed" class="hud"></div>
+<button id="boostBtn">ブースト</button>
+
+<div id="startScr" class="screen">
+  <h1>スネークパーク</h1>
+  <p>光る粒を食べて長くなろう。他の蛇の体に頭が当たると負け。逆に、自分の体に当てさせれば相手が粒になって食べられる。押している間はブースト（速くなる代わりに少しずつ短くなる）。</p>
+  <input id="nameIn" maxlength="12" placeholder="名前（例：アキラ）">
+  <button id="playBtn">あそぶ</button>
+  <p style="font-size:12px;color:#7e8cbd">PC：マウスで向き、押している間ブースト／ スマホ：指で向き、下のボタンでブースト</p>
+</div>
+
+<div id="overScr" class="screen hidden">
+  <h1>ゲームオーバー</h1>
+  <div id="overStats"></div>
+  <button id="againBtn">もう一度</button>
+</div>
+
+<script>
+"use strict";
+// ---------------- world constants ----------------
+const ARENA_R = 2600;            // arena radius (world units)
+const ORB_COUNT = 420;
+const BOT_COUNT = 11;
+const BASE_SPEED = 2.35, BOOST_SPEED = 4.35;
+const TURN = 0.115;              // max turn per frame (rad)
+const SEG = 4.2;                 // trail point spacing
+
+const cv = document.getElementById('game'), ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = W * DPR; cv.height = H * DPR;
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+}
+window.addEventListener('resize', resize); resize();
+
+const COLORS = ['#ff5d5d','#ffb84d','#f7e94d','#7dff5e','#4dffc3','#4dc9ff','#7d7dff','#c44dff','#ff4da6','#4dff88','#ffd24d','#6af2ff'];
+const BOT_NAMES = ['ポチ','ハナ','ソラ','ムギ','ココ','リン','タロ','ユキ','マメ','フク','サク'];
+const rand = (a, b) => a + Math.random() * (b - a);
+function randInArena(margin) {
+  const r = Math.sqrt(Math.random()) * (ARENA_R - (margin || 60)), a = rand(0, Math.PI * 2);
+  return { x: Math.cos(a) * r, y: Math.sin(a) * r };
+}
+
+// ---------------- entities ----------------
+let orbs = [];        // {x,y,r,val,color,glow}
+let snakes = [];      // snake objects
+let player = null;
+let running = false, camShake = 0, feedMsgs = [];
+
+function makeOrb(x, y, val, big) {
+  return { x, y, r: big ? rand(4.5, 6.5) : rand(2.2, 3.6), val: val || 1,
+           color: COLORS[(Math.random() * COLORS.length) | 0], pulse: rand(0, 6.28) };
+}
+function seedOrbs() { orbs = []; for (let i = 0; i < ORB_COUNT; i++) { const p = randInArena(); orbs.push(makeOrb(p.x, p.y)); } }
+
+function makeSnake(name, color, isPlayer, sx, sy) {
+  const a = rand(0, Math.PI * 2);
+  const s = { name, color, isPlayer: !!isPlayer, alive: true,
+              x: sx, y: sy, ang: a, targetAng: a,
+              score: 12, pts: [], boost: false, aiT: 0, aiMode: 'eat', aiTx: 0, aiTy: 0 };
+  for (let i = 0; i < 90; i++) s.pts.push({ x: sx - Math.cos(a) * i * SEG, y: sy - Math.sin(a) * i * SEG });
+  return s;
+}
+function radiusOf(s) { return 5.5 + Math.sqrt(Math.max(0, s.score)) * 0.62; }
+function trailLen(s) { return 26 + s.score * 3.1; }
+
+function spawnWorld(playerName) {
+  seedOrbs(); snakes = [];
+  const pp = randInArena(500);
+  player = makeSnake(playerName || 'あなた', COLORS[(Math.random() * COLORS.length) | 0], true, pp.x, pp.y);
+  snakes.push(player);
+  for (let i = 0; i < BOT_COUNT; i++) {
+    const p = randInArena(300);
+    snakes.push(makeSnake(BOT_NAMES[i % BOT_NAMES.length], COLORS[i % COLORS.length], false, p.x, p.y));
+  }
+}
+
+// ---------------- input ----------------
+let pointer = null, pointerDown = false;
+cv.addEventListener('pointermove', e => { pointer = { x: e.clientX, y: e.clientY }; });
+cv.addEventListener('pointerdown', e => { pointer = { x: e.clientX, y: e.clientY }; pointerDown = true; });
+window.addEventListener('pointerup', () => { pointerDown = false; });
+const boostBtn = document.getElementById('boostBtn');
+let touchBoost = false;
+boostBtn.addEventListener('pointerdown', e => { e.preventDefault(); touchBoost = true; boostBtn.classList.add('on'); });
+window.addEventListener('pointerup', () => { touchBoost = false; boostBtn.classList.remove('on'); });
+if ('ontouchstart' in window) boostBtn.style.display = 'block';
+
+// ---------------- AI ----------------
+function aiThink(s) {
+  s.aiT--;
+  const toC = Math.atan2(-s.y, -s.x), dC = Math.hypot(s.x, s.y);
+  // danger: border
+  if (dC > ARENA_R - 190) { s.targetAng = toC + rand(-0.4, 0.4); s.boost = dC > ARENA_R - 110; return; }
+  // danger: other bodies near head
+  const hx = s.x + Math.cos(s.ang) * 34, hy = s.y + Math.sin(s.ang) * 34;
+  for (const o of snakes) {
+    if (o === s || !o.alive) continue;
+    for (let i = 6; i < o.pts.length; i += 5) {
+      const p = o.pts[i], dx = hx - p.x, dy = hy - p.y;
+      if (dx * dx + dy * dy < 34 * 34) { s.targetAng = Math.atan2(hy - p.y + dy, hx - p.x + dx) + rand(-0.5, 0.5); s.boost = Math.random() < 0.35; return; }
+    }
+  }
+  if (s.aiT <= 0) {
+    s.aiT = (18 + Math.random() * 30) | 0;
+    s.aiMode = Math.random() < 0.82 ? 'eat' : 'roam';
+    if (s.aiMode === 'eat') { // nearest orb cluster
+      let best = null, bd = 1e12;
+      for (let i = 0; i < orbs.length; i += 3) { const o = orbs[i], dx = o.x - s.x, dy = o.y - s.y, d = dx * dx + dy * dy; if (d < bd) { bd = d; best = o; } }
+      if (best) { s.aiTx = best.x; s.aiTy = best.y; }
+    } else { const p = randInArena(500); s.aiTx = p.x; s.aiTy = p.y; }
+    s.boost = Math.random() < 0.10 && s.score > 40;
+  }
+  s.targetAng = Math.atan2(s.aiTy - s.y, s.aiTx - s.x);
+}
+
+// ---------------- simulation ----------------
+function turnToward(s, dt) {
+  let d = s.targetAng - s.ang;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  const m = TURN * dt;
+  s.ang += Math.abs(d) < m ? d : Math.sign(d) * m;
+}
+function stepSnake(s, dt) {
+  const wantBoost = s.boost && s.score > 16;
+  const sp = (wantBoost ? BOOST_SPEED : BASE_SPEED) * dt;
+  s.x += Math.cos(s.ang) * sp; s.y += Math.sin(s.ang) * sp;
+  if (wantBoost) { // drain + drop crumbs
+    s.score -= 0.055 * dt;
+    if (Math.random() < 0.16 * dt && orbs.length < ORB_COUNT + 500) {
+      const tail = s.pts[s.pts.length - 1];
+      orbs.push(makeOrb(tail.x + rand(-4, 4), tail.y + rand(-4, 4), 1));
+    }
+  }
+  const head = s.pts[0];
+  if (Math.hypot(s.x - head.x, s.y - head.y) >= SEG) {
+    s.pts.unshift({ x: s.x, y: s.y });
+    let acc = 0, cut = s.pts.length;
+    for (let i = 1; i < s.pts.length; i++) { acc += Math.hypot(s.pts[i].x - s.pts[i - 1].x, s.pts[i].y - s.pts[i - 1].y); if (acc >= trailLen(s)) { cut = i + 1; break; } }
+    s.pts.length = Math.min(cut, s.pts.length);
+  } else { s.pts[0] = { x: s.x, y: s.y }; }
+}
+function eatOrbs(s) {
+  const r = radiusOf(s) + 5;
+  for (let i = orbs.length - 1; i >= 0; i--) {
+    const o = orbs[i], dx = o.x - s.x, dy = o.y - s.y;
+    if (dx * dx + dy * dy < (r + o.r) * (r + o.r)) { s.score += o.val; orbs.splice(i, 1); if (orbs.length < ORB_COUNT) { const p = randInArena(); orbs.push(makeOrb(p.x, p.y)); } }
+  }
+}
+function killSnake(s, byName) {
+  s.alive = false;
+  const n = Math.min(s.pts.length, 26 + (s.score | 0));
+  for (let i = 0; i < n; i += 2) { const p = s.pts[i]; if (p) orbs.push(makeOrb(p.x + rand(-6, 6), p.y + rand(-6, 6), 2, true)); }
+  feed(s.isPlayer ? 'あなたは倒れた…' : s.name + ' が倒れた' + (byName ? '（' + byName + '）' : ''));
+  if (s.isPlayer) { gameOver(); }
+  else setTimeout(() => { if (running) { const p = randInArena(300); const ns = makeSnake(s.name, s.color, false, p.x, p.y); snakes[snakes.indexOf(s)] = ns; } }, 2600);
+}
+function checkDeaths() {
+  for (const s of snakes) {
+    if (!s.alive) continue;
+    if (Math.hypot(s.x, s.y) > ARENA_R - radiusOf(s) * 0.4) { killSnake(s); continue; }
+    for (const o of snakes) {
+      if (!o.alive) continue;
+      const skip = o === s ? 14 : 4;
+      for (let i = skip; i < o.pts.length; i += 3) {
+        const p = o.pts[i], dx = s.x - p.x, dy = s.y - p.y, rr = radiusOf(o) * 0.92;
+        if (dx * dx + dy * dy < rr * rr) { killSnake(s, o === s ? null : o.name); break; }
+      }
+      if (!s.alive) break;
+    }
+  }
+}
+function feed(msg) {
+  feedMsgs.push(msg); if (feedMsgs.length > 4) feedMsgs.shift();
+  document.getElementById('feed').innerHTML = feedMsgs.join('<br>');
+  setTimeout(() => { feedMsgs.shift(); document.getElementById('feed').innerHTML = feedMsgs.join('<br>'); }, 4200);
+}
+
+// ---------------- rendering ----------------
+function drawSnake(s, camX, camY, zoom) {
+  const r = radiusOf(s);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (let pass = 0; pass < 2; pass++) {
+    ctx.beginPath();
+    const step = pass === 0 ? 2 : 2;
+    for (let i = s.pts.length - 1; i >= 0; i -= step) {
+      const p = s.pts[i], x = (p.x - camX) * zoom + W / 2, y = (p.y - camY) * zoom + H / 2;
+      if (x < -60 || x > W + 60 || y < -60 || y > H + 60) continue;
+      if (i === s.pts.length - 1) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = pass === 0 ? s.color : 'rgba(255,255,255,0.16)';
+    ctx.lineWidth = (pass === 0 ? r * 2 : r * 1.1) * zoom;
+    ctx.globalAlpha = s.alive ? (pass === 0 ? 0.95 : 0.5) : 0.25;
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  // eyes
+  const hx = (s.x - camX) * zoom + W / 2, hy = (s.y - camY) * zoom + H / 2;
+  const ex = Math.cos(s.ang), ey = Math.sin(s.ang), px = -ey, py = ex;
+  for (const sgn of [-1, 1]) {
+    const cx = hx + (ex * r * 0.45 + px * sgn * r * 0.42) * zoom, cy = hy + (ey * r * 0.45 + py * sgn * r * 0.42) * zoom;
+    ctx.beginPath(); ctx.arc(cx, cy, Math.max(1.6, r * 0.30 * zoom), 0, 6.29); ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + ex * r * 0.12 * zoom, cy + ey * r * 0.12 * zoom, Math.max(0.9, r * 0.15 * zoom), 0, 6.29); ctx.fillStyle = '#10131f'; ctx.fill();
+  }
+  // name
+  ctx.font = `600 ${Math.max(10, 12 * zoom)}px sans-serif`; ctx.textAlign = 'center';
+  ctx.fillStyle = s.isPlayer ? '#ffd76a' : 'rgba(230,238,255,0.85)';
+  ctx.fillText(s.name, hx, hy - r * zoom - 8);
+}
+function draw() {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.fillStyle = '#0c1020'; ctx.fillRect(0, 0, W, H);
+  if (!player) return;
+  const zoom = Math.max(0.55, Math.min(1.05, 46 / (radiusOf(player) * 2 + 26)));
+  const camX = player.x, camY = player.y;
+  // grid
+  ctx.strokeStyle = 'rgba(110,130,220,0.10)'; ctx.lineWidth = 1;
+  const gs = 120 * zoom;
+  const ox = (W / 2 - camX * zoom) % gs, oy = (H / 2 - camY * zoom) % gs;
+  ctx.beginPath();
+  for (let x = ox; x < W; x += gs) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+  for (let y = oy; y < H; y += gs) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
+  ctx.stroke();
+  // arena border
+  ctx.beginPath(); ctx.arc((0 - camX) * zoom + W / 2, (0 - camY) * zoom + H / 2, ARENA_R * zoom, 0, 6.29);
+  ctx.strokeStyle = 'rgba(255,80,90,0.85)'; ctx.lineWidth = 5; ctx.stroke();
+  ctx.beginPath(); ctx.arc((0 - camX) * zoom + W / 2, (0 - camY) * zoom + H / 2, ARENA_R * zoom, 0, 6.29);
+  ctx.strokeStyle = 'rgba(255,80,90,0.14)'; ctx.lineWidth = 26; ctx.stroke();
+  // orbs
+  const t = performance.now() / 380;
+  for (const o of orbs) {
+    const x = (o.x - camX) * zoom + W / 2, y = (o.y - camY) * zoom + H / 2;
+    if (x < -20 || x > W + 20 || y < -20 || y > H + 20) continue;
+    const rr = o.r * zoom * (1 + 0.16 * Math.sin(t + o.pulse));
+    ctx.beginPath(); ctx.arc(x, y, rr * 1.9, 0, 6.29); ctx.fillStyle = o.color; ctx.globalAlpha = 0.16; ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, rr, 0, 6.29); ctx.globalAlpha = 0.95; ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  const sorted = [...snakes].sort((a, b) => radiusOf(a) - radiusOf(b));
+  for (const s of sorted) drawSnake(s, camX, camY, zoom);
+}
+
+// ---------------- HUD ----------------
+const lenEl = document.getElementById('lenNow'), rankEl = document.getElementById('rankNow'), boardEl = document.getElementById('boardRows');
+let hudT = 0;
+function hud(now) {
+  if (now - hudT < 220) return; hudT = now;
+  const alive = snakes.filter(s => s.alive).sort((a, b) => b.score - a.score);
+  lenEl.textContent = Math.floor(player.score);
+  rankEl.textContent = player.alive ? (alive.indexOf(player) + 1) + ' / ' + alive.length : '-';
+  boardEl.innerHTML = alive.slice(0, 5).map((s, i) =>
+    `<div class="${s.isPlayer ? 'me' : ''}">${i + 1}. ${s.name}　${Math.floor(s.score)}</div>`).join('');
+}
+
+// ---------------- main loop ----------------
+let last = 0;
+function loop(now) {
+  requestAnimationFrame(loop);
+  const dt = Math.min(2.2, last ? (now - last) / 16.7 : 1); last = now;
+  if (running && player) {
+    if (pointer) player.targetAng = Math.atan2(pointer.y - H / 2, pointer.x - W / 2);
+    player.boost = pointerDown || touchBoost;
+    for (const s of snakes) {
+      if (!s.alive) continue;
+      if (!s.isPlayer) aiThink(s);
+      turnToward(s, dt); stepSnake(s, dt); eatOrbs(s);
+    }
+    checkDeaths();
+    hud(now);
+  }
+  draw();
+}
+requestAnimationFrame(loop);
+
+// ---------------- screens ----------------
+const startScr = document.getElementById('startScr'), overScr = document.getElementById('overScr');
+function startGame() {
+  const name = document.getElementById('nameIn').value.trim() || 'あなた';
+  try { localStorage.setItem('snakeName', name); } catch (e) {}
+  spawnWorld(name);
+  running = true;
+  startScr.classList.add('hidden'); overScr.classList.add('hidden');
+}
+function gameOver() {
+  running = false;
+  document.getElementById('overStats').textContent = '最終の長さ： ' + Math.floor(player.score);
+  setTimeout(() => overScr.classList.remove('hidden'), 650);
+}
+document.getElementById('playBtn').addEventListener('click', startGame);
+document.getElementById('againBtn').addEventListener('click', startGame);
+document.getElementById('nameIn').addEventListener('keydown', e => { if (e.key === 'Enter') startGame(); });
+try { const n = localStorage.getItem('snakeName'); if (n) document.getElementById('nameIn').value = n; } catch (e) {}
+spawnWorld('あなた'); // backdrop demo behind the start screen
+</script>
+</body>
+</html>
