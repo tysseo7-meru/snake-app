@@ -503,7 +503,7 @@ function startSync() {
         for (const [id, r] of remotes) if (now - r.seenAt > 6000) remotes.delete(id);
         topUpBots();
       }, () => { /* snapshot error: stay solo */ });
-      setInterval(publishNow, 120);
+      setInterval(publishNow, 600); // 600 ms: the Firestore free quota is 20k writes/day — 120 ms publishing burned it in under an hour of total play
       setInterval(() => { const now = Date.now(); for (const [id, r] of remotes) if (now - r.seenAt > 6000) remotes.delete(id); }, 2500);
     })
     .catch(() => { /* offline: solo mode */ });
@@ -679,7 +679,7 @@ document.querySelectorAll('.langbtn').forEach(b => b.addEventListener('click', (
 }));
 applyLang();
 startSync();
-document.getElementById('verTag').textContent = 'Snake Park v21';
+document.getElementById('verTag').textContent = 'Snake Park v22';
 
 // ---------------- diagnostics + game-over watchdog ----------------
 function showErr(msg) {
