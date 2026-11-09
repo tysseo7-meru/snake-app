@@ -103,7 +103,7 @@
 "use strict";
 // ---------------- world constants ----------------
 const ARENA_R = 2200;            // arena radius (world units)
-const ORB_COUNT = 1300; // food doubled (2026-11-07)
+const ORB_COUNT = 2600; // food doubled again (2026-11-10)
 const BOT_COUNT = 19; // 20 snakes in total, player included
 const BASE_SPEED = 2.35, BOOST_SPEED = 4.35;
 const TURN = 0.095;              // max turn per frame (rad)
@@ -922,7 +922,7 @@ document.querySelectorAll('.langbtn').forEach(b => b.addEventListener('click', (
 applyLang();
 startSync();
 setTimeout(() => { try { submitScore(); } catch (e) {} }, 2500); // retry a best score that failed to send last time
-document.getElementById('verTag').textContent = 'Snake Park v33';
+document.getElementById('verTag').textContent = 'Snake Park v34';
 
 // ---------------- diagnostics + game-over watchdog ----------------
 function showErr(msg) {
