@@ -99,7 +99,6 @@
   <input id="nameIn" maxlength="12" placeholder="名前（例：アキラ）">
   <button id="playBtn">あそぶ</button>
   <p id="howTxt" style="font-size:12px;color:#7e8cbd">PC：マウスで向き、押している間ブースト／ スマホ：指で向き、下のボタンでブースト</p>
-  <a id="testBoostLink" href="#" style="font-size:11px;color:#55608a;text-decoration:underline">テスト用：常時ブースト（無料）</a>
 </div>
 
 <div id="overScr" class="screen hidden">
@@ -270,7 +269,6 @@ function applyLang() {
   document.title = T('title');
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   set('titleTxt', T('title')); set('descTxt', T('desc')); set('playBtn', T('play')); set('howTxt', T('how'));
-  set('testBoostLink', T('testBoost'));
   set('lenLabel', T('len')); set('rankLabel', T('rank')); set('boardTitle', T('board'));
   set('boostBtn', T('boost')); set('overTxt', T('over')); set('againBtn', T('again')); set('hsTitle', T('hs'));
   const ni = document.getElementById('nameIn'); if (ni) ni.placeholder = T('ph');
@@ -948,12 +946,13 @@ function renderGlobalScores() {
 
 // ---------------- screens ----------------
 const startScr = document.getElementById('startScr'), overScr = document.getElementById('overScr');
-let startBoostMode = false; // one-game Always Boost, set by the test link
+let startBoostMode = false; // one-game Always Boost (kept for parity with the Pi build)
+const TEST_BOOST = new URLSearchParams(location.search).get('testboost') === '1'; // hidden test switch: ?testboost=1
 function startGame() {
   const name = document.getElementById('nameIn').value.trim() || T('you');
   try { localStorage.setItem('snakeName', name); } catch (e) {}
   spawnWorld(name);
-  if (player) player.alwaysBoost = startBoostMode;
+  if (player) player.alwaysBoost = startBoostMode || TEST_BOOST;
   startBoostMode = false; // the unlock lasts for this one game only
   boostBtn.classList.toggle('on', !!(player && player.alwaysBoost));
   bgmStart();
@@ -970,7 +969,6 @@ function gameOver() {
   try { submitScore(); renderGlobalScores(); } catch (e) {}
 }
 document.getElementById('playBtn').addEventListener('click', startGame);
-document.getElementById('testBoostLink').addEventListener('click', e => { e.preventDefault(); startBoostMode = true; startGame(); });
 document.getElementById('againBtn').addEventListener('click', startGame);
 document.getElementById('nameIn').addEventListener('keydown', e => { if (e.key === 'Enter') startGame(); });
 try { const n = localStorage.getItem('snakeName'); if (n) document.getElementById('nameIn').value = n; } catch (e) {}
@@ -984,7 +982,7 @@ document.querySelectorAll('.langbtn').forEach(b => b.addEventListener('click', (
 applyLang();
 startSync();
 setTimeout(() => { try { submitScore(); } catch (e) {} }, 2500); // retry a best score that failed to send last time
-document.getElementById('verTag').textContent = 'Snake Park v40';
+document.getElementById('verTag').textContent = 'Snake Park v41';
 
 // ---------------- diagnostics + game-over watchdog ----------------
 function showErr(msg) {
