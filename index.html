@@ -99,6 +99,7 @@
   <input id="nameIn" maxlength="12" placeholder="名前（例：アキラ）">
   <button id="playBtn">あそぶ</button>
   <p id="howTxt" style="font-size:12px;color:#7e8cbd">PC：マウスで向き、押している間ブースト／ スマホ：指で向き、下のボタンでブースト</p>
+  <a id="testBoostLink" href="#" style="font-size:11px;color:#55608a;text-decoration:underline">テスト用：常時ブースト（無料）</a>
 </div>
 
 <div id="overScr" class="screen hidden">
@@ -252,12 +253,14 @@ const STR = {
         ph: '名前（例：アキラ）', play: 'あそぶ', how: 'PC：マウスで向き、押している間ブースト／ スマホ：触れた所からドラッグで向き（スティック操作）、右下ボタン長押しでブースト。横画面でも遊べます',
         len: '長さ', rank: '順位', board: 'ランキング', boost: 'ブースト', over: 'ゲームオーバー', again: 'もう一度',
         finalLen: '最終の長さ： ', you: 'あなた', youDown: 'あなたは倒れた…', down: ' が倒れた', by: '（', byEnd: '）',
-        bgmOn: 'BGM：オン', bgmOff: 'BGM：オフ', online: 'オンライン', hs: 'ハイスコア', hsAll: 'みんなのハイスコア' },
+        bgmOn: 'BGM：オン', bgmOff: 'BGM：オフ', online: 'オンライン', hs: 'ハイスコア', hsAll: 'みんなのハイスコア',
+        testBoost: 'テスト用：常時ブースト（無料）' },
   en: { title: 'Snake Park', desc: 'Eat the glowing orbs to grow longer. If your head touches another snake\'s body, you lose. Make others crash into you and eat the orbs they drop. Hold to boost (faster, but you slowly shrink).',
         ph: 'Name (e.g. Alex)', play: 'Play', how: 'PC: steer with the mouse, hold to boost / Phone: drag anywhere to steer (joystick), hold the button to boost. Landscape works too',
         len: 'Length', rank: 'Rank', board: 'Ranking', boost: 'BOOST', over: 'Game Over', again: 'Play again',
         finalLen: 'Final length: ', you: 'You', youDown: 'You went down…', down: ' went down', by: ' (by ', byEnd: ')',
-        bgmOn: 'BGM: On', bgmOff: 'BGM: Off', online: 'Online', hs: 'High Scores', hsAll: "Everyone's High Scores" }
+        bgmOn: 'BGM: On', bgmOff: 'BGM: Off', online: 'Online', hs: 'High Scores', hsAll: "Everyone's High Scores",
+        testBoost: 'Test: Always Boost (free)' }
 };
 if (!STR[LANG]) { LANG = 'ja'; try { localStorage.setItem('snakeLang', LANG); } catch (e) {} } // heal a bad stored language value
 function T(k) { const d = STR[LANG] || STR.ja; const v = d[k]; return v !== undefined ? v : k; }
@@ -267,6 +270,7 @@ function applyLang() {
   document.title = T('title');
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   set('titleTxt', T('title')); set('descTxt', T('desc')); set('playBtn', T('play')); set('howTxt', T('how'));
+  set('testBoostLink', T('testBoost'));
   set('lenLabel', T('len')); set('rankLabel', T('rank')); set('boardTitle', T('board'));
   set('boostBtn', T('boost')); set('overTxt', T('over')); set('againBtn', T('again')); set('hsTitle', T('hs'));
   const ni = document.getElementById('nameIn'); if (ni) ni.placeholder = T('ph');
@@ -295,7 +299,7 @@ function makeSnake(name, color, isPlayer, sx, sy) {
   const a = rand(0, Math.PI * 2);
   const s = { name, color, isPlayer: !!isPlayer, alive: true,
               x: sx, y: sy, ang: a, targetAng: a,
-              score: isPlayer ? 12 : 14 + Math.random() * 50, pts: [], boost: false, aiT: 0, aiMode: 'eat', aiTx: 0, aiTy: 0 };
+              score: isPlayer ? 12 : 14 + Math.random() * 50, pts: [], boost: false, alwaysBoost: false, aiT: 0, aiMode: 'eat', aiTx: 0, aiTy: 0 };
   for (let i = 0; i < 12; i++) s.pts.push({ x: sx - Math.cos(a) * i * SEG, y: sy - Math.sin(a) * i * SEG });
   return s;
 }
@@ -383,10 +387,11 @@ function turnToward(s, dt) {
   s.ang += Math.abs(d) < m ? d : Math.sign(d) * m;
 }
 function stepSnake(s, dt) {
-  const wantBoost = s.boost && s.score > 16;
+  const freeBoost = s.isPlayer && s.alwaysBoost; // test mode: always fast, never drains
+  const wantBoost = freeBoost || (s.boost && s.score > 16);
   const sp = (wantBoost ? BOOST_SPEED : BASE_SPEED) * dt;
   s.x += Math.cos(s.ang) * sp; s.y += Math.sin(s.ang) * sp;
-  if (wantBoost) { // drain + drop crumbs
+  if (wantBoost && !freeBoost) { // drain + drop crumbs
     s.score -= 0.055 * dt;
     if (Math.random() < 0.08 * dt && orbs.length < ORB_COUNT + 500) {
       const tail = s.pts[s.pts.length - 1];
@@ -943,10 +948,14 @@ function renderGlobalScores() {
 
 // ---------------- screens ----------------
 const startScr = document.getElementById('startScr'), overScr = document.getElementById('overScr');
+let startBoostMode = false; // one-game Always Boost, set by the test link
 function startGame() {
   const name = document.getElementById('nameIn').value.trim() || T('you');
   try { localStorage.setItem('snakeName', name); } catch (e) {}
   spawnWorld(name);
+  if (player) player.alwaysBoost = startBoostMode;
+  startBoostMode = false; // the unlock lasts for this one game only
+  boostBtn.classList.toggle('on', !!(player && player.alwaysBoost));
   bgmStart();
   running = true;
   publishNow();
@@ -954,12 +963,14 @@ function startGame() {
 }
 function gameOver() {
   running = false;
+  boostBtn.classList.remove('on');
   document.getElementById('overStats').textContent = T('finalLen') + Math.floor(player.score);
   setTimeout(() => overScr.classList.remove('hidden'), 650); // show the screen first: scoring must never block it
   try { recordHighScore(); } catch (e) {}
   try { submitScore(); renderGlobalScores(); } catch (e) {}
 }
 document.getElementById('playBtn').addEventListener('click', startGame);
+document.getElementById('testBoostLink').addEventListener('click', e => { e.preventDefault(); startBoostMode = true; startGame(); });
 document.getElementById('againBtn').addEventListener('click', startGame);
 document.getElementById('nameIn').addEventListener('keydown', e => { if (e.key === 'Enter') startGame(); });
 try { const n = localStorage.getItem('snakeName'); if (n) document.getElementById('nameIn').value = n; } catch (e) {}
@@ -973,7 +984,7 @@ document.querySelectorAll('.langbtn').forEach(b => b.addEventListener('click', (
 applyLang();
 startSync();
 setTimeout(() => { try { submitScore(); } catch (e) {} }, 2500); // retry a best score that failed to send last time
-document.getElementById('verTag').textContent = 'Snake Park v39';
+document.getElementById('verTag').textContent = 'Snake Park v40';
 
 // ---------------- diagnostics + game-over watchdog ----------------
 function showErr(msg) {
